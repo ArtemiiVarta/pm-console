@@ -1,0 +1,47 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Design tokens (CLAUDE.md). HSL channels so Tailwind can apply alpha. */
+@layer base {
+  :root {
+    --primary: 221 83% 53%; /* #2563EB */
+    --primary-foreground: 0 0% 100%;
+    --surface: 0 0% 100%;
+    --background: 210 40% 98%; /* #F8FAFC */
+    --foreground: 222 47% 11%; /* slate-900 */
+    --border: 214 32% 91%; /* #E2E8F0 */
+    --input: 214 32% 91%;
+    --ring: 221 83% 53%;
+    --muted: 215 16% 47%; /* #64748B */
+    --subtle: 210 40% 96%; /* slate-100, hover and secondary fills */
+    --success: 142 76% 36%; /* #16A34A */
+    --warning: 32 95% 44%; /* #D97706 */
+    --danger: 0 72% 51%; /* #DC2626 */
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    --primary: 217 91% 60%;
+    --primary-foreground: 0 0% 100%;
+    --surface: 222 47% 11%;
+    --background: 229 84% 5%;
+    --foreground: 210 40% 98%;
+    --border: 217 33% 17%;
+    --input: 217 33% 17%;
+    --ring: 217 91% 60%;
+    --muted: 215 20% 65%;
+    --subtle: 217 33% 17%;
+    --success: 142 71% 45%;
+    --warning: 38 92% 50%;
+    --danger: 0 84% 60%;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background font-sans text-sm text-foreground antialiased;
+  }
+}
