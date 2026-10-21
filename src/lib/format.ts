@@ -38,7 +38,8 @@ export function formatCurrency(value: number, currency: Currency, maximumFractio
     style: 'currency',
     currency,
     currencyDisplay: 'narrowSymbol',
-    minimumFractionDigits: 0,
+    // Fixed decimals so rates line up in tables ($95.00, not $95).
+    minimumFractionDigits: maximumFractionDigits,
     maximumFractionDigits,
   }).format(value)
 }

@@ -72,6 +72,6 @@ describe('format', () => {
     expect(formatPercent(0.314)).toBe('31.4%')
     expect(formatPercent(0.2)).toBe('20%')
     expect(formatCurrency(12345.6, 'CAD')).toBe('$12,346')
-    expect(formatCurrency(-50, 'EUR', 2)).toBe('-€50')
+    expect(formatCurrency(-50, 'EUR', 2)).toBe('-€50.00')
   })
 })
