@@ -37,6 +37,8 @@ export interface AppActions {
   addPhase: (phase: NewPhase) => string
   updatePhase: (id: string, patch: PhasePatch) => void
   deletePhase: (id: string) => void
+  /** Inserts a copy right after the original, named "<name> (copy)"; returns the new id or null. */
+  duplicatePhase: (id: string) => string | null
   /** Reorders phases to match `orderedIds`; unknown ids are ignored, missing phases keep their relative order at the end. */
   reorderPhases: (orderedIds: string[]) => void
 
@@ -110,6 +112,23 @@ export const useAppStore = create<AppState>()(
         })),
       deletePhase: (id) =>
         set((state) => ({ phases: normalizeOrder(state.phases.filter((phase) => phase.id !== id)) })),
+      duplicatePhase: (id) => {
+        const original = get().phases.find((phase) => phase.id === id)
+        if (!original) return null
+        const copyId = newId()
+        set((state) => {
+          const ordered = normalizeOrder(state.phases)
+          const copy: Phase = {
+            ...original,
+            id: copyId,
+            name: `${original.name} (copy)`,
+            color: getPhaseColor(state.phases.length),
+          }
+          ordered.splice(ordered.findIndex((phase) => phase.id === id) + 1, 0, copy)
+          return { phases: ordered.map((phase, order) => ({ ...phase, order })) }
+        })
+        return copyId
+      },
       reorderPhases: (orderedIds) =>
         set((state) => {
           const rank = new Map(orderedIds.map((id, index) => [id, index]))

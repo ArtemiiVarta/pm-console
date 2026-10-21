@@ -1,4 +1,13 @@
-import { addBusinessDays, addDays, eachWeekOfInterval, isWeekend, max, min } from 'date-fns'
+import {
+  addBusinessDays,
+  addDays,
+  differenceInCalendarDays,
+  eachDayOfInterval,
+  eachWeekOfInterval,
+  isWeekend,
+  max,
+  min,
+} from 'date-fns'
 import { parseISODate, toISODate, WEEK_STARTS_ON } from '@/lib/dates'
 import type { DurationMode, ISODate, Phase } from '@/store/types'
 
@@ -46,4 +55,97 @@ export function getProjectWeeks(range: DateRange | null): ISODate[] {
   const end = parseISODate(range.end)
   if (end < start) return []
   return eachWeekOfInterval({ start, end }, { weekStartsOn: WEEK_STARTS_ON }).map(toISODate)
+}
+
+/** Phases in table order. */
+export function sortPhases(phases: Phase[]): Phase[] {
+  return [...phases].sort((a, b) => a.order - b.order)
+}
+
+/** The calendar day after `date`. */
+export function getDayAfter(date: ISODate): ISODate {
+  return toISODate(addDays(parseISODate(date), 1))
+}
+
+/** Day after the last phase (in table order) ends, or null without phases. */
+export function getNextPhaseStart(phases: Phase[], durationMode: DurationMode): ISODate | null {
+  const last = sortPhases(phases).at(-1)
+  return last ? getDayAfter(getPhaseEndDate(last, durationMode)) : null
+}
+
+export interface PhaseIssues {
+  /** Names of other phases whose dates overlap this one. */
+  overlapsWith: string[]
+  /**
+   * Days with no phase between the previous phase (in table order) and this one. Counts working
+   * days in working mode, so a weekend between Friday and Monday is not a gap.
+   */
+  gapDaysBefore: number
+}
+
+/** Overlaps (against every other phase) and gaps (against the previous phase in table order). */
+export function getPhaseIssues(phases: Phase[], durationMode: DurationMode): Record<string, PhaseIssues> {
+  const ordered = sortPhases(phases).map((phase) => ({
+    phase,
+    start: parseISODate(phase.startDate),
+    end: parseISODate(getPhaseEndDate(phase, durationMode)),
+  }))
+
+  const issues: Record<string, PhaseIssues> = {}
+  ordered.forEach((current, index) => {
+    const overlapsWith = ordered
+      .filter((other) => other !== current && other.start <= current.end && current.start <= other.end)
+      .map((other) => other.phase.name)
+
+    let gapDaysBefore = 0
+    const previous = ordered[index - 1]
+    if (previous && differenceInCalendarDays(current.start, previous.end) > 1) {
+      const between = eachDayOfInterval({ start: addDays(previous.end, 1), end: addDays(current.start, -1) })
+      gapDaysBefore =
+        durationMode === 'working' ? between.filter((day) => !isWeekend(day)).length : between.length
+    }
+
+    issues[current.phase.id] = { overlapsWith, gapDaysBefore }
+  })
+  return issues
+}
+
+export interface TimelineBar {
+  phase: Phase
+  endDate: ISODate
+  /** Day index (0-based) from the first timeline Monday. */
+  startDay: number
+  /** Number of days covered, inclusive. */
+  spanDays: number
+}
+
+export interface TimelineLayout {
+  weeks: ISODate[]
+  totalDays: number
+  bars: TimelineBar[]
+  /** Day index of `today`, or null when outside the timeline. */
+  todayDay: number | null
+}
+
+/** Day-based layout for the Gantt view: whole Mon–Sun weeks with one bar per phase in table order. */
+export function getTimelineLayout(
+  phases: Phase[],
+  durationMode: DurationMode,
+  today: ISODate,
+): TimelineLayout {
+  const weeks = getProjectWeeks(getProjectRange(phases, durationMode))
+  const first = weeks[0]
+  if (!first) return { weeks, totalDays: 0, bars: [], todayDay: null }
+
+  const origin = parseISODate(first)
+  const totalDays = weeks.length * 7
+  const dayIndex = (date: ISODate) => differenceInCalendarDays(parseISODate(date), origin)
+
+  const bars = sortPhases(phases).map((phase) => {
+    const endDate = getPhaseEndDate(phase, durationMode)
+    const startDay = dayIndex(phase.startDate)
+    return { phase, endDate, startDay, spanDays: dayIndex(endDate) - startDay + 1 }
+  })
+  const todayIndex = dayIndex(today)
+  return { weeks, totalDays, bars, todayDay: todayIndex >= 0 && todayIndex < totalDays ? todayIndex : null }
 }

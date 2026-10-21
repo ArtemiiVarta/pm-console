@@ -45,8 +45,11 @@ function SettingsTabs() {
         ))}
       </TabsList>
       {subTabs.map(({ value, content: Content }) => (
-        <TabsContent key={value} value={value} className="mt-0 flex flex-col gap-6">
-          <Content />
+        <TabsContent key={value} value={value} className="mt-0">
+          {/* Layout lives on an inner div: a display class on TabsContent would override [hidden]. */}
+          <div className="flex flex-col gap-6">
+            <Content />
+          </div>
         </TabsContent>
       ))}
     </Tabs>

@@ -1,6 +1,6 @@
 import { format } from 'date-fns'
 import { parseISODate } from '@/lib/dates'
-import type { Currency, ISODate } from '@/store/types'
+import type { Currency, DurationUnit, ISODate } from '@/store/types'
 
 export const CURRENCIES = ['CAD', 'USD', 'EUR', 'GBP'] as const satisfies readonly Currency[]
 
@@ -41,4 +41,10 @@ export function formatCurrency(value: number, currency: Currency, maximumFractio
     minimumFractionDigits: 0,
     maximumFractionDigits,
   }).format(value)
+}
+
+/** `1 week`, `3 days` */
+export function formatDuration(duration: number, unit: DurationUnit): string {
+  const word = unit === 'weeks' ? 'week' : 'day'
+  return `${duration} ${word}${duration === 1 ? '' : 's'}`
 }

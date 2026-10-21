@@ -79,6 +79,21 @@ describe('phases', () => {
     ])
   })
 
+  it('duplicates a phase right after the original with a new color', () => {
+    const a = store().addPhase(phaseInput('A'))
+    store().addPhase(phaseInput('B'))
+    const copy = store().duplicatePhase(a)
+    expect(store().phases.map((p) => [p.name, p.order])).toEqual([
+      ['A', 0],
+      ['A (copy)', 1],
+      ['B', 2],
+    ])
+    const duplicated = store().phases.find((p) => p.id === copy)
+    expect(duplicated).toMatchObject({ startDate: '2026-10-19', duration: 2, durationUnit: 'weeks' })
+    expect(duplicated?.color).toBe(PHASE_PALETTE[2])
+    expect(store().duplicatePhase('missing')).toBeNull()
+  })
+
   it('reorders by id list', () => {
     const a = store().addPhase(phaseInput('A'))
     const b = store().addPhase(phaseInput('B'))

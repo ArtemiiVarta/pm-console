@@ -1,15 +1,11 @@
-import { CalendarRange, Construction } from 'lucide-react'
-import { EmptyState } from '@/components/EmptyState'
-import { SectionCard } from '@/components/SectionCard'
+import { PhasesSection } from '@/features/settings/schedule/PhasesSection'
+import { PhaseTimeline } from '@/features/settings/schedule/PhaseTimeline'
 
 export function ScheduleTab() {
   return (
-    <SectionCard icon={CalendarRange} title="Phases" description="Project phases and timeline.">
-      <EmptyState
-        icon={Construction}
-        title="Coming soon"
-        hint="Phases and the timeline are built in the next step."
-      />
-    </SectionCard>
+    <>
+      <PhasesSection />
+      <PhaseTimeline />
+    </>
   )
 }
