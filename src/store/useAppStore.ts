@@ -1,11 +1,203 @@
+import { addWeeks } from 'date-fns'
 import { create } from 'zustand'
+import { createJSONStorage, persist } from 'zustand/middleware'
+import { buildBaseline } from '@/lib/baseline'
+import { getWeekStart, parseISODate, toISODate } from '@/lib/dates'
+import { getPhaseColor } from '@/lib/palette'
+import type { ForecastBaseline, ISODate, Phase, Project, TeamMember } from '@/store/types'
 
-// Minimal store so the app shell can show the project name.
-// The full data model and localStorage persistence arrive with Prompt 3.
-interface AppState {
-  project: { name: string }
+export const STORE_KEY = 'pm-console-v1'
+export const STORE_VERSION = 1
+
+const MIN_LOAD_PCT = 0
+const MAX_LOAD_PCT = 200
+
+export type ProjectPatch = Partial<Omit<Project, 'id' | 'createdAt' | 'updatedAt'>>
+export type NewPhase = Omit<Phase, 'id' | 'order' | 'color'> & { color?: string }
+export type PhasePatch = Partial<Omit<Phase, 'id' | 'order'>>
+export type NewTeamMember = Omit<
+  TeamMember,
+  'id' | 'weeklyOverrides' | 'defaultLoadPct' | 'capacityPct' | 'active'
+> &
+  Partial<Pick<TeamMember, 'weeklyOverrides' | 'defaultLoadPct' | 'capacityPct' | 'active'>>
+export type TeamMemberPatch = Partial<Omit<TeamMember, 'id'>>
+
+export interface AppData {
+  project: Project
+  phases: Phase[]
+  members: TeamMember[]
+  baselines: ForecastBaseline[]
+  /** Baseline compared in Forecast vs Actual. */
+  selectedBaselineId: string | null
 }
 
-export const useAppStore = create<AppState>(() => ({
-  project: { name: '' },
-}))
+export interface AppActions {
+  updateProject: (patch: ProjectPatch) => void
+
+  addPhase: (phase: NewPhase) => string
+  updatePhase: (id: string, patch: PhasePatch) => void
+  deletePhase: (id: string) => void
+  /** Reorders phases to match `orderedIds`; unknown ids are ignored, missing phases keep their relative order at the end. */
+  reorderPhases: (orderedIds: string[]) => void
+
+  addMember: (member: NewTeamMember) => string
+  updateMember: (id: string, patch: TeamMemberPatch) => void
+  deleteMember: (id: string) => void
+  setWeeklyOverride: (memberId: string, weekStart: ISODate, pct: number) => void
+  clearWeeklyOverride: (memberId: string, weekStart: ISODate) => void
+  /** Sets the same load % for every week from `fromWeek` to `toWeek` (inclusive, either order). */
+  applyLoadToRange: (memberId: string, fromWeek: ISODate, toWeek: ISODate, pct: number) => void
+
+  createBaseline: (name: string, description?: string) => ForecastBaseline
+  deleteBaseline: (id: string) => void
+  selectBaseline: (id: string | null) => void
+}
+
+export type AppState = AppData & AppActions
+
+const newId = () => crypto.randomUUID()
+const nowISO = () => new Date().toISOString()
+const clampLoad = (pct: number) => Math.min(MAX_LOAD_PCT, Math.max(MIN_LOAD_PCT, pct))
+
+export function createEmptyProject(): Project {
+  const now = nowISO()
+  return {
+    id: newId(),
+    name: '',
+    client: '',
+    currency: 'CAD',
+    standardHoursPerWeek: 40,
+    durationMode: 'working',
+    createdAt: now,
+    updatedAt: now,
+  }
+}
+
+export function createInitialData(): AppData {
+  return { project: createEmptyProject(), phases: [], members: [], baselines: [], selectedBaselineId: null }
+}
+
+/** Phases sorted by `order` with `order` renumbered 0..n-1. */
+function normalizeOrder(phases: Phase[]): Phase[] {
+  return [...phases].sort((a, b) => a.order - b.order).map((phase, order) => ({ ...phase, order }))
+}
+
+function mapMember(members: TeamMember[], id: string, update: (member: TeamMember) => TeamMember) {
+  return members.map((member) => (member.id === id ? update(member) : member))
+}
+
+export const useAppStore = create<AppState>()(
+  persist(
+    (set, get) => ({
+      ...createInitialData(),
+
+      updateProject: (patch) =>
+        set((state) => ({ project: { ...state.project, ...patch, updatedAt: nowISO() } })),
+
+      addPhase: ({ color, ...phase }) => {
+        const id = newId()
+        set((state) => ({
+          phases: [
+            ...state.phases,
+            { ...phase, id, order: state.phases.length, color: color ?? getPhaseColor(state.phases.length) },
+          ],
+        }))
+        return id
+      },
+      updatePhase: (id, patch) =>
+        set((state) => ({
+          phases: state.phases.map((phase) => (phase.id === id ? { ...phase, ...patch } : phase)),
+        })),
+      deletePhase: (id) =>
+        set((state) => ({ phases: normalizeOrder(state.phases.filter((phase) => phase.id !== id)) })),
+      reorderPhases: (orderedIds) =>
+        set((state) => {
+          const rank = new Map(orderedIds.map((id, index) => [id, index]))
+          const sorted = normalizeOrder(state.phases).sort(
+            (a, b) => (rank.get(a.id) ?? Infinity) - (rank.get(b.id) ?? Infinity) || a.order - b.order,
+          )
+          return { phases: sorted.map((phase, order) => ({ ...phase, order })) }
+        }),
+
+      addMember: (member) => {
+        const id = newId()
+        set((state) => ({
+          members: [
+            ...state.members,
+            { defaultLoadPct: 100, capacityPct: 100, active: true, weeklyOverrides: {}, ...member, id },
+          ],
+        }))
+        return id
+      },
+      updateMember: (id, patch) =>
+        set((state) => ({ members: mapMember(state.members, id, (member) => ({ ...member, ...patch })) })),
+      deleteMember: (id) => set((state) => ({ members: state.members.filter((member) => member.id !== id) })),
+      setWeeklyOverride: (memberId, weekStart, pct) =>
+        set((state) => ({
+          members: mapMember(state.members, memberId, (member) => ({
+            ...member,
+            weeklyOverrides: { ...member.weeklyOverrides, [getWeekStart(weekStart)]: clampLoad(pct) },
+          })),
+        })),
+      clearWeeklyOverride: (memberId, weekStart) =>
+        set((state) => ({
+          members: mapMember(state.members, memberId, (member) => {
+            const weeklyOverrides = { ...member.weeklyOverrides }
+            delete weeklyOverrides[getWeekStart(weekStart)]
+            return { ...member, weeklyOverrides }
+          }),
+        })),
+      applyLoadToRange: (memberId, fromWeek, toWeek, pct) =>
+        set((state) => {
+          let week = parseISODate(getWeekStart(fromWeek))
+          let last = parseISODate(getWeekStart(toWeek))
+          if (last < week) [week, last] = [last, week]
+          const updates: Record<ISODate, number> = {}
+          for (; week <= last; week = addWeeks(week, 1)) updates[toISODate(week)] = clampLoad(pct)
+          return {
+            members: mapMember(state.members, memberId, (member) => ({
+              ...member,
+              weeklyOverrides: { ...member.weeklyOverrides, ...updates },
+            })),
+          }
+        }),
+
+      createBaseline: (name, description) => {
+        const { project, phases, members } = get()
+        const baseline = buildBaseline({
+          id: newId(),
+          name,
+          description,
+          createdAt: nowISO(),
+          forecast: { project, phases, members },
+        })
+        set((state) => ({ baselines: [...state.baselines, baseline] }))
+        return baseline
+      },
+      deleteBaseline: (id) =>
+        set((state) => ({
+          baselines: state.baselines.filter((baseline) => baseline.id !== id),
+          selectedBaselineId: state.selectedBaselineId === id ? null : state.selectedBaselineId,
+        })),
+      selectBaseline: (id) =>
+        set((state) => ({
+          selectedBaselineId:
+            id === null || state.baselines.some((b) => b.id === id) ? id : state.selectedBaselineId,
+        })),
+    }),
+    {
+      name: STORE_KEY,
+      version: STORE_VERSION,
+      storage: createJSONStorage(() => localStorage),
+      partialize: ({ project, phases, members, baselines, selectedBaselineId }): AppData => ({
+        project,
+        phases,
+        members,
+        baselines,
+        selectedBaselineId,
+      }),
+      // Stub: when STORE_VERSION is bumped, upgrade data saved under older versions here.
+      migrate: (persisted) => persisted as AppData,
+    },
+  ),
+)
