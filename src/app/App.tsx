@@ -2,6 +2,8 @@ import { lazy, Suspense } from 'react'
 import { HashRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AppShell } from '@/app/AppShell'
 import { AppProviders } from '@/app/providers'
+import { LoginPage } from '@/features/auth/LoginPage'
+import { RequireAuth } from '@/features/auth/RequireAuth'
 import { ForecastVsActualPage } from '@/features/forecast-vs-actual/ForecastVsActualPage'
 import { MonitoringPage } from '@/features/monitoring/MonitoringPage'
 import { PlanningPage } from '@/features/planning/PlanningPage'
@@ -19,7 +21,14 @@ export function App() {
     <AppProviders>
       <HashRouter>
         <Routes>
-          <Route element={<AppShell />}>
+          <Route path="login" element={<LoginPage />} />
+          <Route
+            element={
+              <RequireAuth>
+                <AppShell />
+              </RequireAuth>
+            }
+          >
             <Route index element={<Navigate to="/settings" replace />} />
             <Route path="settings/*" element={<SettingsPage />} />
             <Route path="planning" element={<PlanningPage />} />

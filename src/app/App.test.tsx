@@ -1,9 +1,11 @@
 import { render, screen } from '@testing-library/react'
 import { App } from '@/app/App'
+import { useAuth } from '@/features/auth/useAuth'
 
 describe('App', () => {
   beforeEach(() => {
     window.location.hash = ''
+    useAuth.getState().signIn()
   })
 
   it('opens Project Settings by default', async () => {

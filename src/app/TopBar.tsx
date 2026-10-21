@@ -1,11 +1,14 @@
 import { LayoutDashboard, LogOut, Moon, Sun } from 'lucide-react'
 import { useTheme } from 'next-themes'
-import { toast } from 'sonner'
+import { useNavigate } from 'react-router-dom'
 import { IconButton } from '@/components/IconButton'
+import { useAuth } from '@/features/auth/useAuth'
 import { useAppStore } from '@/store/useAppStore'
 
 export function TopBar() {
   const projectName = useAppStore((state) => state.project.name)
+  const signOut = useAuth((state) => state.signOut)
+  const navigate = useNavigate()
   const { resolvedTheme, setTheme } = useTheme()
   const isDark = resolvedTheme === 'dark'
 
@@ -31,12 +34,14 @@ export function TopBar() {
             tooltip={isDark ? 'Switch to the light theme' : 'Switch to the dark theme'}
             onClick={() => setTheme(isDark ? 'light' : 'dark')}
           />
-          {/* PIN login arrives with Prompt 2; logout is wired up then. */}
           <IconButton
             icon={LogOut}
             label="Log out"
             tooltip="Lock the console and return to the PIN screen"
-            onClick={() => toast.info('PIN login is not set up yet')}
+            onClick={() => {
+              signOut()
+              navigate('/login', { replace: true })
+            }}
           />
         </div>
       </div>
