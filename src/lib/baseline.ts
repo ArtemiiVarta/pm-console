@@ -1,15 +1,9 @@
-import { getTeamTotals } from '@/lib/forecast'
-import { getProjectRange, getProjectWeeks } from '@/lib/schedule'
+import { getForecastSummary } from '@/lib/summary'
 import type { ForecastBaseline, ForecastSnapshot, ForecastTotals, ISODateTime } from '@/store/types'
 
 /** Team totals for a forecast over all of its project weeks (active members only). */
-export function getForecastTotals({ project, phases, members }: ForecastSnapshot): ForecastTotals {
-  const weeks = getProjectWeeks(getProjectRange(phases, project.durationMode))
-  const { hours, cost, revenue, margin, marginPct } = getTeamTotals(
-    members,
-    weeks,
-    project.standardHoursPerWeek,
-  )
+export function getForecastTotals(forecast: ForecastSnapshot): ForecastTotals {
+  const { hours, cost, revenue, margin, marginPct } = getForecastSummary(forecast).totals
   return { hours, cost, revenue, margin, marginPct }
 }
 

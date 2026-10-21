@@ -11,7 +11,7 @@ describe('App', () => {
   it('opens Project Settings by default', async () => {
     render(<App />)
     expect(await screen.findByRole('heading', { level: 1, name: 'Project Settings' })).toBeInTheDocument()
-    expect(window.location.hash).toBe('#/settings')
+    expect(window.location.hash).toBe('#/settings/general')
   })
 
   it('shows every main tab and the untitled project name', () => {
