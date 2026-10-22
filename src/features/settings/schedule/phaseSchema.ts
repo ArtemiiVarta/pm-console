@@ -1,28 +1,5 @@
-import { z } from 'zod'
 import type { PhaseIssues } from '@/lib/schedule'
 import type { DurationMode, DurationUnit } from '@/store/types'
-
-export const phaseSchema = z.object({
-  name: z.string().trim().min(1, 'Enter a phase name').max(80, 'Use 80 characters or fewer'),
-  startDate: z.iso.date('Pick a start date'),
-  duration: z
-    .number({ error: 'Enter a duration' })
-    .int('Use a whole number')
-    .positive('Use a duration above 0')
-    .max(999, 'Use 999 or fewer'),
-  durationUnit: z.enum(['days', 'weeks']),
-  color: z.string().regex(/^#[0-9a-f]{6}$/i, 'Pick a color'),
-})
-
-export const milestoneSchema = z.object({
-  name: z.string().trim().min(1, 'Enter a milestone name').max(80, 'Use 80 characters or fewer'),
-  date: z.iso.date('Pick a date'),
-  color: z.string().regex(/^#[0-9a-f]{6}$/i, 'Pick a color'),
-})
-
-export type MilestoneValues = z.infer<typeof milestoneSchema>
-
-export type PhaseValues = z.infer<typeof phaseSchema>
 
 /** "(working days)" / "(calendar days)" hint for day-based phases; empty for weeks. */
 export function getDayCountHint(unit: DurationUnit, mode: DurationMode): string {

@@ -28,10 +28,11 @@ describe('backup', () => {
     const parsed = parseBackup(JSON.stringify(backup), 1)
     expect(parsed.ok).toBe(true)
     if (!parsed.ok) return
-    const { project, phases, milestones, members, baselines, selectedBaselineId } = data
+    const { project, phases, items, milestones, members, baselines, selectedBaselineId } = data
     expect(parsed.backup.data).toEqual({
       project,
       phases,
+      items,
       milestones,
       members,
       baselines,
@@ -44,6 +45,7 @@ describe('backup', () => {
     const backup = createBackup(sampleData(), 1, new Date())
     expect(Object.keys(backup.data).sort()).toEqual([
       'baselines',
+      'items',
       'members',
       'milestones',
       'phases',

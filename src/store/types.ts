@@ -32,8 +32,39 @@ export interface Phase {
   /** Positive whole number of `durationUnit`s. */
   duration: number
   durationUnit: DurationUnit
+  /**
+   * Pinned last day. When set it wins over duration (set by dragging an edge on the Gantt chart,
+   * or by fitting to children). Read the end with getPhaseEndDate, never directly.
+   */
+  endDate?: ISODate
+  /** Keep the start on the earliest child start (children: tasks and milestones). */
+  fitStart?: boolean
+  /** Keep the end on the latest child end. */
+  fitEnd?: boolean
   notes?: string
-  // endDate is derived with getPhaseEndDate, never stored.
+}
+
+export type ScheduleItemKind = 'task' | 'milestone'
+
+/**
+ * A task or milestone under a phase (level 1) or under a level-1 task (level 2: sub-task or
+ * sub-milestone). Milestones use `startDate` as their date and ignore duration.
+ */
+export interface ScheduleItem {
+  id: string
+  /** Phase id (level 1) or task id (level 2). */
+  parentId: string
+  kind: ScheduleItemKind
+  name: string
+  color: string
+  /** Position among siblings. */
+  order: number
+  startDate: ISODate
+  duration: number
+  durationUnit: DurationUnit
+  endDate?: ISODate
+  fitStart?: boolean
+  fitEnd?: boolean
 }
 
 /** A single key date shown as a star on the Timeline. Does not change project dates or weeks. */

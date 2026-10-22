@@ -22,6 +22,9 @@ const phaseSchema = z.object({
   startDate: isoDate,
   duration: z.number().positive(),
   durationUnit: z.enum(['days', 'weeks']),
+  endDate: isoDate.optional(),
+  fitStart: z.boolean().optional(),
+  fitEnd: z.boolean().optional(),
   notes: z.string().optional(),
 })
 
@@ -69,9 +72,26 @@ const milestoneSchema = z.object({
   color: z.string(),
 })
 
+const itemSchema = z.object({
+  id: z.string(),
+  parentId: z.string(),
+  kind: z.enum(['task', 'milestone']),
+  name: z.string(),
+  color: z.string(),
+  order: z.number(),
+  startDate: isoDate,
+  duration: z.number().positive(),
+  durationUnit: z.enum(['days', 'weeks']),
+  endDate: isoDate.optional(),
+  fitStart: z.boolean().optional(),
+  fitEnd: z.boolean().optional(),
+})
+
 const appDataSchema = z.object({
   project: projectSchema,
   phases: z.array(phaseSchema),
+  // Backups from versions 1–2 have no tasks.
+  items: z.array(itemSchema).default([]),
   // Backups from version 1 have no milestones.
   milestones: z.array(milestoneSchema).default([]),
   members: z.array(memberSchema),

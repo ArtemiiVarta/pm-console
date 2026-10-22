@@ -257,6 +257,78 @@ describe('baselines', () => {
   })
 })
 
+describe('tasks and sub-items', () => {
+  function seedPhase() {
+    return store().addPhase({ name: 'Explore', startDate: '2026-10-19', duration: 1, durationUnit: 'weeks' })
+  }
+  const task = (parentId: string, startDate: string, duration: number) => ({
+    parentId,
+    kind: 'task' as const,
+    name: `Task ${startDate}`,
+    color: '#2563EB',
+    startDate,
+    duration,
+    durationUnit: 'days' as const,
+  })
+
+  it('adds a child with "adjust parent" options and keeps the parent fitted afterwards', () => {
+    const phaseId = seedPhase()
+    const id = store().addItem(task(phaseId, '2026-10-21', 10), { fitStart: true, fitEnd: true })
+    expect(store().phases[0]).toMatchObject({
+      fitStart: true,
+      fitEnd: true,
+      startDate: '2026-10-21',
+      endDate: '2026-11-03',
+    })
+
+    // Keeps following the child after it changes…
+    store().updateItem(id, { duration: 2 })
+    expect(store().phases[0]).toMatchObject({ startDate: '2026-10-21', endDate: '2026-10-22' })
+    // …and after it moves (drag).
+    store().moveScheduleNode(id, 7)
+    expect(store().phases[0]).toMatchObject({ startDate: '2026-10-28', endDate: '2026-10-29' })
+  })
+
+  it('adds sub-items under a task and fits the task, then the phase', () => {
+    const phaseId = seedPhase()
+    const taskId = store().addItem(task(phaseId, '2026-10-19', 1), { fitStart: false, fitEnd: true })
+    store().addItem(task(taskId, '2026-10-22', 5), { fitStart: true, fitEnd: true })
+    expect(store().items.find((i) => i.id === taskId)).toMatchObject({
+      startDate: '2026-10-22',
+      endDate: '2026-10-28',
+    })
+    expect(store().phases[0]?.endDate).toBe('2026-10-28')
+  })
+
+  it('moving a phase moves its children; deleting removes them', () => {
+    const phaseId = seedPhase()
+    const taskId = store().addItem(task(phaseId, '2026-10-21', 2))
+    const subId = store().addItem(task(taskId, '2026-10-21', 1))
+    store().moveScheduleNode(phaseId, 14)
+    expect(store().items.map((i) => i.startDate)).toEqual(['2026-11-04', '2026-11-04'])
+
+    store().deleteItem(taskId)
+    expect(store().items.map((i) => i.id)).not.toContain(subId)
+    store().addItem(task(phaseId, '2026-10-21', 2))
+    store().deletePhase(phaseId)
+    expect(store().items).toEqual([])
+  })
+
+  it('reorders siblings', () => {
+    const phaseId = seedPhase()
+    const a = store().addItem({ ...task(phaseId, '2026-10-19', 1), name: 'A' })
+    const b = store().addItem({ ...task(phaseId, '2026-10-19', 1), name: 'B' })
+    store().moveItemOrder(b, -1)
+    const order = (id: string) => store().items.find((i) => i.id === id)?.order
+    expect([order(b), order(a)]).toEqual([0, 1])
+  })
+
+  it('migrates version 2 data (no tasks)', () => {
+    const { items: _omit, ...v2 } = createInitialData()
+    expect(migrateData(v2, 2).items).toEqual([])
+  })
+})
+
 describe('milestones', () => {
   it('adds, updates and deletes milestones without touching project dates', () => {
     const id = store().addMilestone({ name: 'Go-live', date: '2026-12-01', color: '#CA8A04' })
@@ -275,7 +347,7 @@ describe('milestones', () => {
       ...createInitialData(),
       milestones: [{ id: 'm', name: 'x', date: '2026-01-01', color: '#000000' }],
     }
-    expect(migrateData(current, 2)).toBe(current)
+    expect(migrateData(current, 3)).toBe(current)
   })
 })
 
@@ -289,6 +361,7 @@ describe('persistence', () => {
     expect(saved.version).toBe(STORE_VERSION)
     expect(Object.keys(saved.state).sort()).toEqual([
       'baselines',
+      'items',
       'members',
       'milestones',
       'phases',

@@ -1,4 +1,4 @@
-import { format, isValid, parseISO, startOfWeek } from 'date-fns'
+import { addDays, format, isValid, parseISO, startOfWeek } from 'date-fns'
 import type { ISODate } from '@/store/types'
 
 /** Weeks start on Monday throughout the app. */
@@ -23,4 +23,9 @@ export function todayISO(): ISODate {
 export function getWeekStart(value: ISODate | Date): ISODate {
   const date = typeof value === 'string' ? parseISODate(value) : value
   return toISODate(startOfWeek(date, { weekStartsOn: WEEK_STARTS_ON }))
+}
+
+/** `date` plus whole calendar days (negative to go back). */
+export function addDaysISO(date: ISODate, days: number): ISODate {
+  return days === 0 ? date : toISODate(addDays(parseISODate(date), days))
 }

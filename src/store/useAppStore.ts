@@ -4,10 +4,26 @@ import { createJSONStorage, persist } from 'zustand/middleware'
 import { buildBaseline } from '@/lib/baseline'
 import { getWeekStart, parseISODate, toISODate } from '@/lib/dates'
 import { getPhaseColor } from '@/lib/palette'
-import type { ForecastBaseline, ISODate, Milestone, Phase, Project, TeamMember } from '@/store/types'
+import {
+  fitSchedule,
+  getDescendantIds,
+  moveNode,
+  setNodeRange,
+  sortByOrder,
+  withoutOrphans,
+} from '@/lib/scheduleTree'
+import type {
+  ForecastBaseline,
+  ISODate,
+  Milestone,
+  Phase,
+  Project,
+  ScheduleItem,
+  TeamMember,
+} from '@/store/types'
 
 export const STORE_KEY = 'pm-console-v1'
-export const STORE_VERSION = 2
+export const STORE_VERSION = 3
 
 const MIN_LOAD_PCT = 0
 const MAX_LOAD_PCT = 200
@@ -22,11 +38,19 @@ export type NewTeamMember = Omit<
   Partial<Pick<TeamMember, 'weeklyOverrides' | 'defaultLoadPct' | 'capacityPct' | 'active'>>
 export type TeamMemberPatch = Partial<Omit<TeamMember, 'id'>>
 export type NewMilestone = Omit<Milestone, 'id'>
+export type NewScheduleItem = Omit<ScheduleItem, 'id' | 'order'>
+export type ScheduleItemPatch = Partial<Omit<ScheduleItem, 'id' | 'parentId'>>
+export interface FitOptions {
+  fitStart: boolean
+  fitEnd: boolean
+}
 export type MilestonePatch = Partial<NewMilestone>
 
 export interface AppData {
   project: Project
   phases: Phase[]
+  /** Tasks and milestones under phases (and sub-items under tasks). */
+  items: ScheduleItem[]
   milestones: Milestone[]
   members: TeamMember[]
   baselines: ForecastBaseline[]
@@ -40,6 +64,20 @@ export interface AppActions {
   addPhase: (phase: NewPhase) => string
   updatePhase: (id: string, patch: PhasePatch) => void
   deletePhase: (id: string) => void
+
+  /** Adds a task or milestone under a phase or task; `parentFit` sets the parent's adjust-to-children options. */
+  addItem: (item: NewScheduleItem, parentFit?: FitOptions) => string
+  updateItem: (id: string, patch: ScheduleItemPatch, parentFit?: FitOptions) => void
+  /** Deletes the item and everything under it. */
+  deleteItem: (id: string) => void
+  /** Moves an item up (-1) or down (+1) among its siblings. */
+  moveItemOrder: (id: string, direction: -1 | 1) => void
+  /** "Adjust start/end date to children" on a phase or task. */
+  setFit: (id: string, fit: FitOptions) => void
+  /** Drag on the Gantt: shift a phase, item or project milestone (with its children) by days. */
+  moveScheduleNode: (id: string, days: number) => void
+  /** Drag an edge on the Gantt: set start and pinned end of a phase or task. */
+  setScheduleNodeRange: (id: string, start: ISODate, end: ISODate) => void
 
   addMilestone: (milestone: NewMilestone) => string
   updateMilestone: (id: string, patch: MilestonePatch) => void
@@ -105,7 +143,8 @@ export function createEmptyProject(): Project {
 /** Brings data saved under an older STORE_VERSION up to date. */
 export function migrateData(persisted: unknown, version: number): AppData {
   const data = persisted as Partial<AppData>
-  if (version < 2) return { ...(data as AppData), milestones: data.milestones ?? [] }
+  // v2 added project milestones, v3 added tasks/sub-items.
+  if (version < 3) return { ...(data as AppData), milestones: data.milestones ?? [], items: data.items ?? [] }
   return data as AppData
 }
 
@@ -113,6 +152,7 @@ export function createInitialData(): AppData {
   return {
     project: createEmptyProject(),
     phases: [],
+    items: [],
     milestones: [],
     members: [],
     baselines: [],
@@ -125,6 +165,23 @@ function normalizeOrder(phases: Phase[]): Phase[] {
   return [...phases].sort((a, b) => a.order - b.order).map((phase, order) => ({ ...phase, order }))
 }
 
+/** Re-applies "adjust to children" after any schedule change (drops items whose parent is gone). */
+function refit(
+  state: Pick<AppData, 'project'>,
+  phases: Phase[],
+  items: ScheduleItem[],
+): Pick<AppData, 'phases' | 'items'> {
+  return fitSchedule(phases, withoutOrphans(phases, items), state.project.durationMode)
+}
+
+function applyFit(items: ScheduleItem[], phases: Phase[], parentId: string, fit: FitOptions | undefined) {
+  if (!fit) return { phases, items }
+  return {
+    phases: phases.map((phase) => (phase.id === parentId ? { ...phase, ...fit } : phase)),
+    items: items.map((item) => (item.id === parentId ? { ...item, ...fit } : item)),
+  }
+}
+
 function mapMember(members: TeamMember[], id: string, update: (member: TeamMember) => TeamMember) {
   return members.map((member) => (member.id === id ? update(member) : member))
 }
@@ -135,7 +192,11 @@ export const useAppStore = create<AppState>()(
       ...createInitialData(),
 
       updateProject: (patch) =>
-        set((state) => ({ project: { ...state.project, ...patch, updatedAt: nowISO() } })),
+        set((state) => {
+          const project = { ...state.project, ...patch, updatedAt: nowISO() }
+          // Day counting can change task ends, so parents are refitted.
+          return { project, ...refit({ project }, state.phases, state.items) }
+        }),
 
       addPhase: ({ color, ...phase }) => {
         const id = newId()
@@ -148,11 +209,18 @@ export const useAppStore = create<AppState>()(
         return id
       },
       updatePhase: (id, patch) =>
-        set((state) => ({
-          phases: state.phases.map((phase) => (phase.id === id ? { ...phase, ...patch } : phase)),
-        })),
+        set((state) =>
+          refit(
+            state,
+            state.phases.map((phase) => (phase.id === id ? { ...phase, ...patch } : phase)),
+            state.items,
+          ),
+        ),
       deletePhase: (id) =>
-        set((state) => ({ phases: normalizeOrder(state.phases.filter((phase) => phase.id !== id)) })),
+        set((state) =>
+          // Its tasks and milestones go with it (orphans are dropped by refit).
+          refit(state, normalizeOrder(state.phases.filter((phase) => phase.id !== id)), state.items),
+        ),
       duplicatePhase: (id) => {
         const original = get().phases.find((phase) => phase.id === id)
         if (!original) return null
@@ -284,11 +352,76 @@ export const useAppStore = create<AppState>()(
         if (!baseline) return false
         // Deep copy so later edits never reach the (immutable) snapshot.
         const { project, phases, members } = structuredClone(baseline.snapshot)
-        set({ project: { ...project, updatedAt: nowISO() }, phases, members })
+        set((state) => ({
+          project: { ...project, updatedAt: nowISO() },
+          members,
+          // Baselines hold phases only: keep tasks whose phase still exists.
+          ...refit({ project }, phases, state.items),
+        }))
         return true
       },
-      replaceData: ({ project, phases, milestones, members, baselines, selectedBaselineId }) =>
-        set({ project, phases, milestones, members, baselines, selectedBaselineId }),
+      replaceData: ({ project, phases, items, milestones, members, baselines, selectedBaselineId }) =>
+        set({ project, phases, items, milestones, members, baselines, selectedBaselineId }),
+
+      addItem: (item, parentFit) => {
+        const id = newId()
+        set((state) => {
+          const siblings = state.items.filter((other) => other.parentId === item.parentId)
+          const items = [...state.items, { ...item, id, order: siblings.length }]
+          const fitted = applyFit(items, state.phases, item.parentId, parentFit)
+          return refit(state, fitted.phases, fitted.items)
+        })
+        return id
+      },
+      updateItem: (id, patch, parentFit) =>
+        set((state) => {
+          const items = state.items.map((item) => (item.id === id ? { ...item, ...patch } : item))
+          const parentId = state.items.find((item) => item.id === id)?.parentId ?? ''
+          const fitted = applyFit(items, state.phases, parentId, parentFit)
+          return refit(state, fitted.phases, fitted.items)
+        }),
+      deleteItem: (id) =>
+        set((state) => {
+          const removed = new Set([id, ...getDescendantIds(state.items, id)])
+          return refit(
+            state,
+            state.phases,
+            state.items.filter((item) => !removed.has(item.id)),
+          )
+        }),
+      moveItemOrder: (id, direction) =>
+        set((state) => {
+          const item = state.items.find((candidate) => candidate.id === id)
+          if (!item) return {}
+          const siblings = sortByOrder(state.items.filter((other) => other.parentId === item.parentId))
+          const index = siblings.findIndex((sibling) => sibling.id === id)
+          const target = index + direction
+          if (target < 0 || target >= siblings.length) return {}
+          const reordered = [...siblings]
+          reordered.splice(index, 1)
+          reordered.splice(target, 0, item)
+          const rank = new Map(reordered.map((sibling, order) => [sibling.id, order]))
+          return {
+            items: state.items.map((other) =>
+              rank.has(other.id) ? { ...other, order: rank.get(other.id) ?? other.order } : other,
+            ),
+          }
+        }),
+      setFit: (id, fit) =>
+        set((state) => {
+          const fitted = applyFit(state.items, state.phases, id, fit)
+          return refit(state, fitted.phases, fitted.items)
+        }),
+      moveScheduleNode: (id, days) =>
+        set((state) => {
+          const moved = moveNode(state, id, days)
+          return { milestones: moved.milestones, ...refit(state, moved.phases, moved.items) }
+        }),
+      setScheduleNodeRange: (id, start, end) =>
+        set((state) => {
+          const resized = setNodeRange(state, id, start, end)
+          return refit(state, resized.phases, resized.items)
+        }),
 
       addMilestone: (milestone) => {
         const id = newId()
@@ -313,9 +446,18 @@ export const useAppStore = create<AppState>()(
       name: STORE_KEY,
       version: STORE_VERSION,
       storage: createJSONStorage(() => localStorage),
-      partialize: ({ project, phases, milestones, members, baselines, selectedBaselineId }): AppData => ({
+      partialize: ({
         project,
         phases,
+        items,
+        milestones,
+        members,
+        baselines,
+        selectedBaselineId,
+      }): AppData => ({
+        project,
+        phases,
+        items,
         milestones,
         members,
         baselines,

@@ -5,7 +5,6 @@ import {
   getPhaseIssues,
   getProjectRange,
   getProjectWeeks,
-  getTimelineLayout,
   sortPhases,
 } from '@/lib/schedule'
 import type { DurationUnit, Phase } from '@/store/types'
@@ -169,65 +168,9 @@ describe('getPhaseIssues', () => {
   })
 })
 
-describe('getTimelineLayout', () => {
-  it('is empty without phases', () => {
-    expect(getTimelineLayout([], 'working', MON)).toEqual({
-      weeks: [],
-      totalDays: 0,
-      bars: [],
-      markers: [],
-      todayDay: null,
-    })
-  })
-
-  it('places bars by day offset from the first Monday and marks today', () => {
-    const layout = getTimelineLayout(
-      [
-        { ...phase('a', WED, 3), order: 0 },
-        { ...phase('b', '2026-10-26', 2, 'weeks'), order: 1 },
-      ],
-      'working',
-      FRI,
-    )
-    expect(layout.weeks).toEqual(['2026-10-19', '2026-10-26', '2026-11-02'])
-    expect(layout.totalDays).toBe(21)
-    expect(
-      layout.bars.map(({ phase: p, startDay, spanDays, endDate }) => [p.id, startDay, spanDays, endDate]),
-    ).toEqual([
-      ['a', 2, 3, FRI],
-      ['b', 7, 14, '2026-11-08'],
-    ])
-    expect(layout.todayDay).toBe(4)
-    expect(getTimelineLayout([phase('a', WED, 3)], 'working', '2027-01-01').todayDay).toBeNull()
-  })
-})
-
-describe('getTimelineLayout with milestones', () => {
-  const milestone = (id: string, date: string) => ({ id, name: id, date, color: '#CA8A04' })
-
-  it('places milestone stars by day and sorts them by date', () => {
-    const layout = getTimelineLayout([{ ...phase('a', MON, 5), order: 0 }], 'working', MON, [
-      milestone('late', '2026-10-23'),
-      milestone('early', '2026-10-20'),
-    ])
-    expect(layout.markers.map((m) => [m.milestone.id, m.day])).toEqual([
-      ['early', 1],
-      ['late', 4],
-    ])
-  })
-
-  it('extends the weeks to show milestones outside the phases', () => {
-    const layout = getTimelineLayout([{ ...phase('a', MON, 5), order: 0 }], 'working', MON, [
-      milestone('go-live', '2026-11-04'),
-    ])
-    expect(layout.weeks).toEqual(['2026-10-19', '2026-10-26', '2026-11-02'])
-    expect(layout.markers[0]?.day).toBe(16)
-  })
-
-  it('shows milestones even without phases', () => {
-    const layout = getTimelineLayout([], 'working', MON, [milestone('kick-off', '2026-10-21')])
-    expect(layout.weeks).toEqual(['2026-10-19'])
-    expect(layout.bars).toEqual([])
-    expect(layout.markers[0]?.day).toBe(2)
+describe('pinned end date', () => {
+  it('wins over the duration and never falls before the start', () => {
+    expect(getPhaseEndDate({ ...span(MON, 2, 'weeks'), endDate: '2026-10-28' }, 'working')).toBe('2026-10-28')
+    expect(getPhaseEndDate({ ...span(WED, 1), endDate: MON }, 'calendar')).toBe(WED)
   })
 })

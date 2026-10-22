@@ -1,11 +1,5 @@
-import { PhasesSection } from '@/features/settings/schedule/PhasesSection'
-import { PhaseTimeline } from '@/features/settings/schedule/PhaseTimeline'
+import { GanttSection } from '@/features/settings/schedule/GanttSection'
 
 export function ScheduleTab() {
-  return (
-    <>
-      <PhasesSection />
-      <PhaseTimeline />
-    </>
-  )
+  return <GanttSection />
 }
