@@ -3,15 +3,18 @@ import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { ArrowRightToLine, Copy, GripVertical, Pencil, Save, Trash2, X } from 'lucide-react'
 import { toast } from 'sonner'
+import { ColorPicker } from '@/components/ColorPicker'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { DatePicker } from '@/components/DatePicker'
 import { IconButton } from '@/components/IconButton'
 import { Input } from '@/components/ui/input'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { TableCell, TableRow } from '@/components/ui/table'
 import { PhaseIssueBadge } from '@/features/settings/schedule/PhaseIssueBadge'
 import { getDayCountHint, phaseSchema, type PhaseValues } from '@/features/settings/schedule/phaseSchema'
 import { formatDate } from '@/lib/format'
+import { getColorName } from '@/lib/palette'
 import { getDayAfter, getPhaseEndDate, type PhaseIssues } from '@/lib/schedule'
 import { cn } from '@/lib/utils'
 import { useAppStore } from '@/store/useAppStore'
@@ -178,6 +181,7 @@ function EditCells({ phase, durationMode, focusField, onStopEdit }: PhaseRowProp
     startDate: phase.startDate,
     duration: phase.duration,
     durationUnit: phase.durationUnit,
+    color: phase.color,
   })
   const [errors, setErrors] = useState<FieldErrors>({})
   const fieldRefs = useRef<Partial<Record<PhaseField, HTMLElement | null>>>({})
@@ -239,7 +243,24 @@ function EditCells({ phase, durationMode, focusField, onStopEdit }: PhaseRowProp
     <>
       <TableCell className="w-8 pr-0" />
       <TableCell className="w-6 pr-0">
-        <ColorDot color={phase.color} />
+        <Popover>
+          <PopoverTrigger asChild>
+            <button
+              type="button"
+              aria-label={`Phase color: ${getColorName(draft.color)}. Change color`}
+              className="flex h-6 w-6 items-center justify-center rounded-full hover:bg-subtle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            >
+              <ColorDot color={draft.color} />
+            </button>
+          </PopoverTrigger>
+          <PopoverContent align="start" className="w-auto">
+            <ColorPicker
+              label="Phase color"
+              value={draft.color}
+              onChange={(color) => setDraft((current) => ({ ...current, color }))}
+            />
+          </PopoverContent>
+        </Popover>
       </TableCell>
       <TableCell onKeyDown={onKeyDown} className="min-w-44 align-top">
         <Input

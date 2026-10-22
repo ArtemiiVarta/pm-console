@@ -11,12 +11,12 @@ export interface Backup {
 }
 
 export function createBackup(data: AppData, version: number, now: Date): Backup {
-  const { project, phases, members, baselines, selectedBaselineId } = data
+  const { project, phases, milestones, members, baselines, selectedBaselineId } = data
   return {
     format: BACKUP_FORMAT,
     version,
     exportedAt: now.toISOString(),
-    data: { project, phases, members, baselines, selectedBaselineId },
+    data: { project, phases, milestones, members, baselines, selectedBaselineId },
   }
 }
 

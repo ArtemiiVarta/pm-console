@@ -36,6 +36,15 @@ export interface Phase {
   // endDate is derived with getPhaseEndDate, never stored.
 }
 
+/** A single key date shown as a star on the Timeline. Does not change project dates or weeks. */
+export interface Milestone {
+  id: string
+  name: string
+  date: ISODate
+  /** Hex color of the star. */
+  color: string
+}
+
 export interface TeamMember {
   id: string
   firstName: string

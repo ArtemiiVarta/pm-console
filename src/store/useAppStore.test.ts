@@ -1,6 +1,7 @@
 import { PHASE_PALETTE } from '@/lib/palette'
 import {
   createInitialData,
+  migrateData,
   STORE_KEY,
   STORE_VERSION,
   useAppStore,
@@ -256,6 +257,28 @@ describe('baselines', () => {
   })
 })
 
+describe('milestones', () => {
+  it('adds, updates and deletes milestones without touching project dates', () => {
+    const id = store().addMilestone({ name: 'Go-live', date: '2026-12-01', color: '#CA8A04' })
+    expect(store().milestones).toEqual([{ id, name: 'Go-live', date: '2026-12-01', color: '#CA8A04' }])
+    store().updateMilestone(id, { color: '#DC2626', date: '2026-12-08' })
+    expect(store().milestones[0]).toMatchObject({ color: '#DC2626', date: '2026-12-08' })
+    expect(store().phases).toEqual([])
+    store().deleteMilestone(id)
+    expect(store().milestones).toEqual([])
+  })
+
+  it('migrates data saved by version 1 (no milestones)', () => {
+    const { milestones: _omit, ...v1 } = createInitialData()
+    expect(migrateData(v1, 1).milestones).toEqual([])
+    const current = {
+      ...createInitialData(),
+      milestones: [{ id: 'm', name: 'x', date: '2026-01-01', color: '#000000' }],
+    }
+    expect(migrateData(current, 2)).toBe(current)
+  })
+})
+
 describe('persistence', () => {
   it(`saves data (not actions) to localStorage under ${STORE_KEY}`, () => {
     store().updateProject({ name: 'Persisted' })
@@ -267,6 +290,7 @@ describe('persistence', () => {
     expect(Object.keys(saved.state).sort()).toEqual([
       'baselines',
       'members',
+      'milestones',
       'phases',
       'project',
       'selectedBaselineId',

@@ -21,6 +21,12 @@ function renderSchedule() {
 
 const row = (id: string) => screen.getByTestId(`phase-row-${id}`)
 
+/** Opens the section's Add menu and picks Phase or Milestone. */
+async function openAdd(user: ReturnType<typeof userEvent.setup>, item: 'Phase' | 'Milestone') {
+  await user.click(await screen.findByRole('button', { name: 'Add' }))
+  await user.click(await screen.findByRole('menuitem', { name: item }))
+}
+
 beforeEach(() => {
   localStorage.clear()
   useAppStore.setState(createInitialData())
@@ -28,11 +34,11 @@ beforeEach(() => {
 })
 
 describe('Project Schedule', () => {
-  it('shows the empty state with an Add phase action', async () => {
+  it('shows the empty state with an Add action', async () => {
     renderSchedule()
     expect(await screen.findByText('No phases yet')).toBeInTheDocument()
-    expect(screen.getByText('Add your first phase to define the project timeline')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Add phase' })).toBeInTheDocument()
+    expect(screen.getByText(/Add your first phase to define the project timeline/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Add' })).toBeInTheDocument()
     expect(screen.queryByText('Timeline')).not.toBeInTheDocument()
   })
 
@@ -95,7 +101,7 @@ describe('Project Schedule', () => {
       const user = userEvent.setup()
       seed([{ name: 'Prepare', startDate: '2026-10-19', duration: 1, durationUnit: 'weeks' }])
       renderSchedule()
-      await user.click(await screen.findByRole('button', { name: 'Add phase' }))
+      await openAdd(user, 'Phase')
 
       const dialog = within(screen.getByRole('dialog'))
       expect(dialog.getByLabelText(/Start date/)).toHaveTextContent('26 Oct 2026')
@@ -116,7 +122,7 @@ describe('Project Schedule', () => {
     it('defaults the start to today without phases', async () => {
       const user = userEvent.setup()
       renderSchedule()
-      await user.click(await screen.findByRole('button', { name: 'Add phase' }))
+      await openAdd(user, 'Phase')
       expect(within(screen.getByRole('dialog')).getByLabelText(/Start date/)).toHaveTextContent(
         formatDate(todayISO()),
       )
@@ -125,7 +131,7 @@ describe('Project Schedule', () => {
     it('requires a name and a whole, positive duration', async () => {
       const user = userEvent.setup()
       renderSchedule()
-      await user.click(await screen.findByRole('button', { name: 'Add phase' }))
+      await openAdd(user, 'Phase')
       const dialog = within(screen.getByRole('dialog'))
       const duration = dialog.getByLabelText(/Duration/)
 

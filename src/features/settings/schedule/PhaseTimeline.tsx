@@ -1,10 +1,11 @@
 import { useMemo } from 'react'
-import { GanttChart } from 'lucide-react'
+import { GanttChart, Star } from 'lucide-react'
 import { SectionCard } from '@/components/SectionCard'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { todayISO } from '@/lib/dates'
 import { formatDate, formatDuration, formatWeekLabel } from '@/lib/format'
 import { getTimelineLayout } from '@/lib/schedule'
+import { cn } from '@/lib/utils'
 import { useAppStore } from '@/store/useAppStore'
 
 /** Minimum width of one week column, in rem. */
@@ -15,11 +16,17 @@ const LABEL_COLUMN = '10rem'
 export function PhaseTimeline() {
   const phases = useAppStore((state) => state.phases)
   const durationMode = useAppStore((state) => state.project.durationMode)
-  const layout = useMemo(() => getTimelineLayout(phases, durationMode, todayISO()), [phases, durationMode])
+  const milestones = useAppStore((state) => state.milestones)
+  const layout = useMemo(
+    () => getTimelineLayout(phases, durationMode, todayISO(), milestones),
+    [phases, durationMode, milestones],
+  )
 
-  if (layout.bars.length === 0) return null
+  if (layout.bars.length === 0 && layout.markers.length === 0) return null
 
-  const rows = layout.bars.length + 1
+  // Header + one row per phase + one row per milestone.
+  const rows = layout.bars.length + layout.markers.length + 1
+  const firstMilestoneRow = layout.bars.length + 2
   const gridStyle = {
     gridTemplateColumns: `${LABEL_COLUMN} repeat(${layout.totalDays}, minmax(0, 1fr))`,
     minWidth: `calc(${LABEL_COLUMN} + ${layout.weeks.length * WEEK_MIN_REM}rem)`,
@@ -29,7 +36,7 @@ export function PhaseTimeline() {
     <SectionCard
       icon={GanttChart}
       title="Timeline"
-      description="Phases on a weekly scale. Week labels are Mondays; the blue line marks today."
+      description="Phases and milestones (★) on a weekly scale. Week labels are Mondays; the blue line marks today."
     >
       <div className="overflow-x-auto rounded-lg border">
         <div className="relative grid text-xs" style={gridStyle} role="table" aria-label="Phase timeline">
@@ -95,6 +102,59 @@ export function PhaseTimeline() {
                         {formatDate(phase.startDate)} – {formatDate(endDate)}
                       </p>
                       <p>{formatDuration(phase.duration, phase.durationUnit)}</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </div>
+              </div>
+            )
+          })}
+
+          {/* Milestone rows: a star on the milestone's day */}
+          {layout.markers.map(({ milestone, day }, index) => {
+            const label = `Milestone ${milestone.name}: ${formatDate(milestone.date)}`
+            return (
+              <div key={milestone.id} role="row" className="contents">
+                <div
+                  role="rowheader"
+                  className={cn(
+                    'sticky left-0 z-10 flex items-center gap-1.5 truncate border-t bg-surface px-3 py-2 text-sm font-medium',
+                    index === 0 && layout.bars.length > 0 && 'border-t-2',
+                  )}
+                  style={{ gridRow: firstMilestoneRow + index, gridColumn: 1 }}
+                >
+                  <Star
+                    className="h-3.5 w-3.5 shrink-0"
+                    style={{ color: milestone.color, fill: milestone.color }}
+                    aria-hidden
+                  />
+                  <span className="truncate">{milestone.name}</span>
+                </div>
+                <div
+                  role="cell"
+                  className={cn(
+                    'flex items-center justify-center border-t py-2',
+                    index === 0 && layout.bars.length > 0 && 'border-t-2',
+                  )}
+                  style={{ gridRow: firstMilestoneRow + index, gridColumn: `${2 + day} / span 1` }}
+                >
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span
+                        tabIndex={0}
+                        role="img"
+                        aria-label={label}
+                        className="relative z-[6] flex rounded-full outline-none ring-offset-2 ring-offset-surface focus-visible:ring-2 focus-visible:ring-primary"
+                      >
+                        <Star
+                          className="h-5 w-5 drop-shadow-sm"
+                          style={{ color: milestone.color, fill: milestone.color }}
+                          aria-hidden
+                        />
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p className="font-medium">★ {milestone.name}</p>
+                      <p className="tabular-nums">{formatDate(milestone.date)}</p>
                     </TooltipContent>
                   </Tooltip>
                 </div>

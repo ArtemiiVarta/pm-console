@@ -4,10 +4,10 @@ import { createJSONStorage, persist } from 'zustand/middleware'
 import { buildBaseline } from '@/lib/baseline'
 import { getWeekStart, parseISODate, toISODate } from '@/lib/dates'
 import { getPhaseColor } from '@/lib/palette'
-import type { ForecastBaseline, ISODate, Phase, Project, TeamMember } from '@/store/types'
+import type { ForecastBaseline, ISODate, Milestone, Phase, Project, TeamMember } from '@/store/types'
 
 export const STORE_KEY = 'pm-console-v1'
-export const STORE_VERSION = 1
+export const STORE_VERSION = 2
 
 const MIN_LOAD_PCT = 0
 const MAX_LOAD_PCT = 200
@@ -21,10 +21,13 @@ export type NewTeamMember = Omit<
 > &
   Partial<Pick<TeamMember, 'weeklyOverrides' | 'defaultLoadPct' | 'capacityPct' | 'active'>>
 export type TeamMemberPatch = Partial<Omit<TeamMember, 'id'>>
+export type NewMilestone = Omit<Milestone, 'id'>
+export type MilestonePatch = Partial<NewMilestone>
 
 export interface AppData {
   project: Project
   phases: Phase[]
+  milestones: Milestone[]
   members: TeamMember[]
   baselines: ForecastBaseline[]
   /** Baseline compared in Forecast vs Actual. */
@@ -37,6 +40,10 @@ export interface AppActions {
   addPhase: (phase: NewPhase) => string
   updatePhase: (id: string, patch: PhasePatch) => void
   deletePhase: (id: string) => void
+
+  addMilestone: (milestone: NewMilestone) => string
+  updateMilestone: (id: string, patch: MilestonePatch) => void
+  deleteMilestone: (id: string) => void
   /** Inserts a copy right after the original, named "<name> (copy)"; returns the new id or null. */
   duplicatePhase: (id: string) => string | null
   /** Reorders phases to match `orderedIds`; unknown ids are ignored, missing phases keep their relative order at the end. */
@@ -95,8 +102,22 @@ export function createEmptyProject(): Project {
   }
 }
 
+/** Brings data saved under an older STORE_VERSION up to date. */
+export function migrateData(persisted: unknown, version: number): AppData {
+  const data = persisted as Partial<AppData>
+  if (version < 2) return { ...(data as AppData), milestones: data.milestones ?? [] }
+  return data as AppData
+}
+
 export function createInitialData(): AppData {
-  return { project: createEmptyProject(), phases: [], members: [], baselines: [], selectedBaselineId: null }
+  return {
+    project: createEmptyProject(),
+    phases: [],
+    milestones: [],
+    members: [],
+    baselines: [],
+    selectedBaselineId: null,
+  }
 }
 
 /** Phases sorted by `order` with `order` renumbered 0..n-1. */
@@ -266,8 +287,22 @@ export const useAppStore = create<AppState>()(
         set({ project: { ...project, updatedAt: nowISO() }, phases, members })
         return true
       },
-      replaceData: ({ project, phases, members, baselines, selectedBaselineId }) =>
-        set({ project, phases, members, baselines, selectedBaselineId }),
+      replaceData: ({ project, phases, milestones, members, baselines, selectedBaselineId }) =>
+        set({ project, phases, milestones, members, baselines, selectedBaselineId }),
+
+      addMilestone: (milestone) => {
+        const id = newId()
+        set((state) => ({ milestones: [...state.milestones, { ...milestone, id }] }))
+        return id
+      },
+      updateMilestone: (id, patch) =>
+        set((state) => ({
+          milestones: state.milestones.map((milestone) =>
+            milestone.id === id ? { ...milestone, ...patch } : milestone,
+          ),
+        })),
+      deleteMilestone: (id) =>
+        set((state) => ({ milestones: state.milestones.filter((milestone) => milestone.id !== id) })),
       selectBaseline: (id) =>
         set((state) => ({
           selectedBaselineId:
@@ -278,15 +313,16 @@ export const useAppStore = create<AppState>()(
       name: STORE_KEY,
       version: STORE_VERSION,
       storage: createJSONStorage(() => localStorage),
-      partialize: ({ project, phases, members, baselines, selectedBaselineId }): AppData => ({
+      partialize: ({ project, phases, milestones, members, baselines, selectedBaselineId }): AppData => ({
         project,
         phases,
+        milestones,
         members,
         baselines,
         selectedBaselineId,
       }),
-      // Stub: when STORE_VERSION is bumped, upgrade data saved under older versions here.
-      migrate: (persisted) => persisted as AppData,
+      // Upgrades data saved by older versions. v2 added milestones.
+      migrate: (persisted, version) => migrateData(persisted, version),
     },
   ),
 )

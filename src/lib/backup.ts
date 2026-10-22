@@ -62,9 +62,18 @@ const baselineSchema = z.object({
   }),
 })
 
+const milestoneSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  date: isoDate,
+  color: z.string(),
+})
+
 const appDataSchema = z.object({
   project: projectSchema,
   phases: z.array(phaseSchema),
+  // Backups from version 1 have no milestones.
+  milestones: z.array(milestoneSchema).default([]),
   members: z.array(memberSchema),
   baselines: z.array(baselineSchema),
   selectedBaselineId: z.string().nullable(),

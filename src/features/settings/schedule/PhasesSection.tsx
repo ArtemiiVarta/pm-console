@@ -15,17 +15,29 @@ import {
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
-import { CalendarRange, Info, Plus } from 'lucide-react'
+import { CalendarRange, ChevronDown, Info, Pencil, Plus, Star, Trash2 } from 'lucide-react'
+import { toast } from 'sonner'
 import { ActionButton } from '@/components/ActionButton'
+import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { EmptyState } from '@/components/EmptyState'
 import { IconButton } from '@/components/IconButton'
 import { SectionCard } from '@/components/SectionCard'
-import { Table, TableBody, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { AddPhaseDialog } from '@/features/settings/schedule/AddPhaseDialog'
+import { MilestoneDialog, type MilestoneDialogMode } from '@/features/settings/schedule/MilestoneDialog'
 import { PhaseRow, type PhaseField } from '@/features/settings/schedule/PhaseRow'
 import { getEndDateFormula } from '@/features/settings/schedule/phaseSchema'
 import { getPhaseIssues, sortPhases } from '@/lib/schedule'
+import { formatDate } from '@/lib/format'
+import { getColorName } from '@/lib/palette'
 import { useAppStore } from '@/store/useAppStore'
+import type { Milestone } from '@/store/types'
 
 const headClass = 'text-xs font-medium uppercase tracking-wide text-muted'
 
@@ -34,7 +46,9 @@ export function PhasesSection() {
   const durationMode = useAppStore((state) => state.project.durationMode)
   const reorderPhases = useAppStore((state) => state.reorderPhases)
 
+  const milestones = useAppStore((state) => state.milestones)
   const [addOpen, setAddOpen] = useState(false)
+  const [milestoneDialog, setMilestoneDialog] = useState<MilestoneDialogMode | null>(null)
   const [editing, setEditing] = useState<{ id: string; field: PhaseField } | null>(null)
 
   const ordered = useMemo(() => sortPhases(phases), [phases])
@@ -69,25 +83,46 @@ export function PhasesSection() {
   }
 
   const addButton = (
-    <ActionButton icon={Plus} tooltip="Add a new project phase" onClick={() => setAddOpen(true)}>
-      Add phase
-    </ActionButton>
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <ActionButton icon={Plus} tooltip="Add a phase or a milestone">
+          Add
+          <ChevronDown className="h-4 w-4 opacity-70" aria-hidden />
+        </ActionButton>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem onSelect={() => setAddOpen(true)}>
+          <CalendarRange className="h-4 w-4" aria-hidden />
+          Phase
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => setMilestoneDialog({ kind: 'add' })}>
+          <Star className="h-4 w-4" aria-hidden />
+          Milestone
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
+
+  const isEmpty = ordered.length === 0 && milestones.length === 0
 
   return (
     <SectionCard
       icon={CalendarRange}
-      title="Phases"
-      description="Drag to reorder. Double-click a cell or use Edit to change a phase."
-      actions={ordered.length > 0 ? addButton : undefined}
+      title="Phases & milestones"
+      description="Drag phases to reorder. Double-click a cell or use Edit to change a phase."
+      actions={isEmpty ? undefined : addButton}
     >
-      {ordered.length === 0 ? (
+      {isEmpty ? (
         <EmptyState
           icon={CalendarRange}
           title="No phases yet"
-          hint="Add your first phase to define the project timeline"
+          hint="Add your first phase to define the project timeline, or a milestone for a key date"
           action={addButton}
         />
+      ) : ordered.length === 0 ? (
+        <p className="rounded-lg border border-dashed px-4 py-3 text-sm text-muted">
+          No phases yet. Phases set the project dates and weeks; use Add › Phase.
+        </p>
       ) : (
         <DndContext
           sensors={sensors}
@@ -145,7 +180,84 @@ export function PhasesSection() {
           </Table>
         </DndContext>
       )}
+      {milestones.length > 0 && <MilestonesTable milestones={milestones} onEdit={setMilestoneDialog} />}
       <AddPhaseDialog open={addOpen} onOpenChange={setAddOpen} />
+      <MilestoneDialog mode={milestoneDialog} onClose={() => setMilestoneDialog(null)} />
     </SectionCard>
+  )
+}
+
+function MilestonesTable({
+  milestones,
+  onEdit,
+}: {
+  milestones: Milestone[]
+  onEdit: (mode: MilestoneDialogMode) => void
+}) {
+  const deleteMilestone = useAppStore((state) => state.deleteMilestone)
+  const ordered = [...milestones].sort((a, b) => a.date.localeCompare(b.date) || a.name.localeCompare(b.name))
+
+  return (
+    <div className="flex flex-col gap-2">
+      <h3 className="flex items-center gap-2 text-base font-medium">
+        <Star className="h-4 w-4 text-muted" aria-hidden />
+        Milestones
+      </h3>
+      <Table aria-label="Milestones" containerClassName="rounded-lg border">
+        <TableHeader>
+          <TableRow className="hover:bg-transparent">
+            <TableHead className="w-8 pr-0">
+              <span className="sr-only">Color</span>
+            </TableHead>
+            <TableHead className={headClass}>Milestone</TableHead>
+            <TableHead className={headClass}>Date</TableHead>
+            <TableHead className={`${headClass} text-right`}>Actions</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {ordered.map((milestone) => (
+            <TableRow key={milestone.id} className="hover:bg-subtle/50">
+              <TableCell className="w-8 pr-0">
+                {/* Star color comes from data. */}
+                <Star
+                  className="h-4 w-4"
+                  style={{ color: milestone.color, fill: milestone.color }}
+                  aria-label={`Star color: ${getColorName(milestone.color)}`}
+                />
+              </TableCell>
+              <TableCell className="font-medium" onDoubleClick={() => onEdit({ kind: 'edit', milestone })}>
+                {milestone.name}
+              </TableCell>
+              <TableCell className="tabular-nums">{formatDate(milestone.date)}</TableCell>
+              <TableCell>
+                <div className="flex items-center justify-end gap-0.5">
+                  <IconButton
+                    icon={Pencil}
+                    label={`Edit ${milestone.name}`}
+                    tooltip="Edit this milestone"
+                    onClick={() => onEdit({ kind: 'edit', milestone })}
+                  />
+                  <ConfirmDialog
+                    title={`Delete “${milestone.name}”?`}
+                    description="The milestone is removed from the timeline. This cannot be undone."
+                    onConfirm={() => {
+                      deleteMilestone(milestone.id)
+                      toast.success(`Milestone “${milestone.name}” deleted`)
+                    }}
+                    trigger={
+                      <IconButton
+                        icon={Trash2}
+                        label={`Delete ${milestone.name}`}
+                        tooltip="Delete this milestone"
+                      />
+                    }
+                  />
+                </div>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
   )
 }

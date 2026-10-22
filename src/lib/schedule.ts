@@ -9,7 +9,7 @@ import {
   min,
 } from 'date-fns'
 import { parseISODate, toISODate, WEEK_STARTS_ON } from '@/lib/dates'
-import type { DurationMode, ISODate, Phase } from '@/store/types'
+import type { DurationMode, ISODate, Milestone, Phase } from '@/store/types'
 
 export interface DateRange {
   start: ISODate
@@ -119,25 +119,45 @@ export interface TimelineBar {
   spanDays: number
 }
 
+export interface TimelineMarker {
+  milestone: Milestone
+  /** Day index (0-based) from the first timeline Monday. */
+  day: number
+}
+
 export interface TimelineLayout {
   weeks: ISODate[]
   totalDays: number
   bars: TimelineBar[]
+  /** Milestones by date (then name). */
+  markers: TimelineMarker[]
   /** Day index of `today`, or null when outside the timeline. */
   todayDay: number | null
 }
 
-/** Day-based layout for the Gantt view: whole Mon–Sun weeks with one bar per phase in table order. */
+/**
+ * Day-based layout for the Gantt view: whole Mon–Sun weeks with one bar per phase in table order
+ * and one star per milestone. The weeks cover phases and milestones, so a milestone outside the
+ * phases still shows (project dates themselves come from phases only).
+ */
 export function getTimelineLayout(
   phases: Phase[],
   durationMode: DurationMode,
   today: ISODate,
+  milestones: Milestone[] = [],
 ): TimelineLayout {
-  const weeks = getProjectWeeks(getProjectRange(phases, durationMode))
-  const first = weeks[0]
-  if (!first) return { weeks, totalDays: 0, bars: [], todayDay: null }
+  const phaseRange = getProjectRange(phases, durationMode)
+  const dates = [
+    ...(phaseRange ? [phaseRange.start, phaseRange.end] : []),
+    ...milestones.map((milestone) => milestone.date),
+  ].sort()
+  const first = dates[0]
+  const last = dates.at(-1)
+  const weeks = first && last ? getProjectWeeks({ start: first, end: last }) : []
+  const firstWeek = weeks[0]
+  if (!firstWeek) return { weeks, totalDays: 0, bars: [], markers: [], todayDay: null }
 
-  const origin = parseISODate(first)
+  const origin = parseISODate(firstWeek)
   const totalDays = weeks.length * 7
   const dayIndex = (date: ISODate) => differenceInCalendarDays(parseISODate(date), origin)
 
@@ -146,6 +166,15 @@ export function getTimelineLayout(
     const startDay = dayIndex(phase.startDate)
     return { phase, endDate, startDay, spanDays: dayIndex(endDate) - startDay + 1 }
   })
+  const markers = [...milestones]
+    .sort((a, b) => a.date.localeCompare(b.date) || a.name.localeCompare(b.name))
+    .map((milestone) => ({ milestone, day: dayIndex(milestone.date) }))
   const todayIndex = dayIndex(today)
-  return { weeks, totalDays, bars, todayDay: todayIndex >= 0 && todayIndex < totalDays ? todayIndex : null }
+  return {
+    weeks,
+    totalDays,
+    bars,
+    markers,
+    todayDay: todayIndex >= 0 && todayIndex < totalDays ? todayIndex : null,
+  }
 }

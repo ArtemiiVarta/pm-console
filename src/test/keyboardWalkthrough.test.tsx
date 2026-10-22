@@ -45,8 +45,10 @@ it('login → add phase → add member → edit and save a week → create basel
   await screen.findByRole('tab', { name: 'Project Schedule', selected: true })
 
   // 2. Add a phase: dialog opens with focus in the name field; Enter submits.
-  await tabTo(user, isButton('Add phase'), 'Add phase')
-  await user.keyboard('{Enter}')
+  await tabTo(user, isButton('Add'), 'Add')
+  await user.keyboard('{Enter}') // opens the Add menu
+  await screen.findByRole('menuitem', { name: 'Phase' })
+  await user.keyboard('{Enter}') // first item: Phase
   await screen.findByRole('dialog', { name: 'Add phase' })
   await user.keyboard('Build{Enter}')
   expect(useAppStore.getState().phases.map((p) => p.name)).toEqual(['Build'])

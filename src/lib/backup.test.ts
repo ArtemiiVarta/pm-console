@@ -28,8 +28,15 @@ describe('backup', () => {
     const parsed = parseBackup(JSON.stringify(backup), 1)
     expect(parsed.ok).toBe(true)
     if (!parsed.ok) return
-    const { project, phases, members, baselines, selectedBaselineId } = data
-    expect(parsed.backup.data).toEqual({ project, phases, members, baselines, selectedBaselineId })
+    const { project, phases, milestones, members, baselines, selectedBaselineId } = data
+    expect(parsed.backup.data).toEqual({
+      project,
+      phases,
+      milestones,
+      members,
+      baselines,
+      selectedBaselineId,
+    })
     expect(parsed.backup.exportedAt).toBe('2026-10-21T12:00:00.000Z')
   })
 
@@ -38,10 +45,19 @@ describe('backup', () => {
     expect(Object.keys(backup.data).sort()).toEqual([
       'baselines',
       'members',
+      'milestones',
       'phases',
       'project',
       'selectedBaselineId',
     ])
+  })
+
+  it('accepts version 1 backups, which have no milestones', () => {
+    const backup = createBackup(sampleData(), 1, new Date()) as unknown as { data: Record<string, unknown> }
+    delete backup.data.milestones
+    const parsed = parseBackup(JSON.stringify(backup), 2)
+    expect(parsed.ok).toBe(true)
+    if (parsed.ok) expect(parsed.backup.data.milestones).toEqual([])
   })
 
   it('names the file by date', () => {

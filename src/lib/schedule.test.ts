@@ -175,6 +175,7 @@ describe('getTimelineLayout', () => {
       weeks: [],
       totalDays: 0,
       bars: [],
+      markers: [],
       todayDay: null,
     })
   })
@@ -198,5 +199,35 @@ describe('getTimelineLayout', () => {
     ])
     expect(layout.todayDay).toBe(4)
     expect(getTimelineLayout([phase('a', WED, 3)], 'working', '2027-01-01').todayDay).toBeNull()
+  })
+})
+
+describe('getTimelineLayout with milestones', () => {
+  const milestone = (id: string, date: string) => ({ id, name: id, date, color: '#CA8A04' })
+
+  it('places milestone stars by day and sorts them by date', () => {
+    const layout = getTimelineLayout([{ ...phase('a', MON, 5), order: 0 }], 'working', MON, [
+      milestone('late', '2026-10-23'),
+      milestone('early', '2026-10-20'),
+    ])
+    expect(layout.markers.map((m) => [m.milestone.id, m.day])).toEqual([
+      ['early', 1],
+      ['late', 4],
+    ])
+  })
+
+  it('extends the weeks to show milestones outside the phases', () => {
+    const layout = getTimelineLayout([{ ...phase('a', MON, 5), order: 0 }], 'working', MON, [
+      milestone('go-live', '2026-11-04'),
+    ])
+    expect(layout.weeks).toEqual(['2026-10-19', '2026-10-26', '2026-11-02'])
+    expect(layout.markers[0]?.day).toBe(16)
+  })
+
+  it('shows milestones even without phases', () => {
+    const layout = getTimelineLayout([], 'working', MON, [milestone('kick-off', '2026-10-21')])
+    expect(layout.weeks).toEqual(['2026-10-19'])
+    expect(layout.bars).toEqual([])
+    expect(layout.markers[0]?.day).toBe(2)
   })
 })

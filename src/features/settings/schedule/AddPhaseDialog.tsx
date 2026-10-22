@@ -5,6 +5,7 @@ import { Controller, useForm, useWatch } from 'react-hook-form'
 import { toast } from 'sonner'
 import { ActionButton } from '@/components/ActionButton'
 import { CalculatedField } from '@/components/CalculatedField'
+import { ColorPicker } from '@/components/ColorPicker'
 import { DatePicker } from '@/components/DatePicker'
 import { FormField } from '@/components/FormField'
 import {
@@ -26,6 +27,7 @@ import {
 import { todayISO } from '@/lib/dates'
 import { fieldAria } from '@/lib/fieldAria'
 import { formatDate } from '@/lib/format'
+import { getPhaseColor } from '@/lib/palette'
 import { getNextPhaseStart, getPhaseEndDate } from '@/lib/schedule'
 import { useAppStore } from '@/store/useAppStore'
 
@@ -73,6 +75,7 @@ function AddPhaseForm({ onDone }: { onDone: () => void }) {
       startDate: getNextPhaseStart(phases, durationMode) ?? todayISO(),
       duration: 4,
       durationUnit: 'weeks',
+      color: getPhaseColor(phases.length),
     },
   })
 
@@ -157,6 +160,20 @@ function AddPhaseForm({ onDone }: { onDone: () => void }) {
           />
         </FormField>
       </div>
+
+      <FormField
+        id="phase-color"
+        label="Color"
+        helper="Used for the bar on the Timeline and the dot in the table."
+      >
+        <Controller
+          control={control}
+          name="color"
+          render={({ field }) => (
+            <ColorPicker id="phase-color" label="Phase color" value={field.value} onChange={field.onChange} />
+          )}
+        />
+      </FormField>
 
       <CalculatedField
         label="End date"
