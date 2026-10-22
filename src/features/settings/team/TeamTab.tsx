@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { BadgeDollarSign, Clock, Cpu, GitBranch, Info, Percent, Receipt, Wallet } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { StatTile } from '@/components/StatTile'
+import { AssignmentSection } from '@/features/settings/team/assignment/AssignmentSection'
 import { RosterSection } from '@/features/settings/team/RosterSection'
 import { formatCurrency, formatNumber, formatPercent } from '@/lib/format'
 import { getForecastSummary, getMarginTone, type ForecastSummary } from '@/lib/summary'
@@ -29,6 +30,7 @@ export function TeamTab() {
 
       <TeamStats summary={summary} currency={project.currency} />
       <RosterSection />
+      <AssignmentSection />
     </>
   )
 }

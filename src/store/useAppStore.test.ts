@@ -145,6 +145,33 @@ describe('members and weekly overrides', () => {
     })
   })
 
+  it('sets and clears many overrides across members in one update', () => {
+    const a = store().addMember(memberInput)
+    const b = store().addMember({
+      ...memberInput,
+      email: 'b@example.com',
+      weeklyOverrides: { '2026-10-12': 5 },
+    })
+    store().setWeeklyOverrides([
+      { memberId: a, weekStart: '2026-10-19', pct: 50 },
+      { memberId: a, weekStart: '2026-10-28', pct: 300 },
+      { memberId: b, weekStart: '2026-10-19', pct: 70 },
+    ])
+    expect(store().members[0]?.weeklyOverrides).toEqual({ '2026-10-19': 50, '2026-10-26': 200 })
+    expect(store().members[1]?.weeklyOverrides).toEqual({ '2026-10-12': 5, '2026-10-19': 70 })
+
+    store().clearWeeklyOverrides([
+      { memberId: a, weekStart: '2026-10-19' },
+      { memberId: b, weekStart: '2026-10-21' },
+    ])
+    expect(store().members[0]?.weeklyOverrides).toEqual({ '2026-10-26': 200 })
+    expect(store().members[1]?.weeklyOverrides).toEqual({ '2026-10-12': 5 })
+
+    store().clearAllWeeklyOverrides(b)
+    expect(store().members[1]?.weeklyOverrides).toEqual({})
+    expect(store().members[0]?.weeklyOverrides).toEqual({ '2026-10-26': 200 })
+  })
+
   it('only changes the targeted member, and deletes', () => {
     const a = store().addMember(memberInput)
     const b = store().addMember({ ...memberInput, email: 'b@example.com' })

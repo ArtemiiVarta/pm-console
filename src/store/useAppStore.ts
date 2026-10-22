@@ -49,10 +49,25 @@ export interface AppActions {
   clearWeeklyOverride: (memberId: string, weekStart: ISODate) => void
   /** Sets the same load % for every week from `fromWeek` to `toWeek` (inclusive, either order). */
   applyLoadToRange: (memberId: string, fromWeek: ISODate, toWeek: ISODate, pct: number) => void
+  /** Sets many weekly overrides in one update (grid edits across cells and members). */
+  setWeeklyOverrides: (updates: WeeklyOverrideUpdate[]) => void
+  /** Removes many weekly overrides in one update. */
+  clearWeeklyOverrides: (cells: WeeklyCell[]) => void
+  /** Removes every weekly override for a member. */
+  clearAllWeeklyOverrides: (memberId: string) => void
 
   createBaseline: (name: string, description?: string) => ForecastBaseline
   deleteBaseline: (id: string) => void
   selectBaseline: (id: string | null) => void
+}
+
+export interface WeeklyCell {
+  memberId: string
+  weekStart: ISODate
+}
+
+export interface WeeklyOverrideUpdate extends WeeklyCell {
+  pct: number
 }
 
 export type AppState = AppData & AppActions
@@ -180,6 +195,46 @@ export const useAppStore = create<AppState>()(
             })),
           }
         }),
+      setWeeklyOverrides: (updates) =>
+        set((state) => {
+          const byMember = new Map<string, Record<ISODate, number>>()
+          for (const { memberId, weekStart, pct } of updates) {
+            const entry = byMember.get(memberId) ?? {}
+            entry[getWeekStart(weekStart)] = clampLoad(pct)
+            byMember.set(memberId, entry)
+          }
+          return {
+            members: state.members.map((member) => {
+              const changes = byMember.get(member.id)
+              return changes
+                ? { ...member, weeklyOverrides: { ...member.weeklyOverrides, ...changes } }
+                : member
+            }),
+          }
+        }),
+      clearWeeklyOverrides: (cells) =>
+        set((state) => {
+          const byMember = new Map<string, Set<ISODate>>()
+          for (const { memberId, weekStart } of cells) {
+            const weeks = byMember.get(memberId) ?? new Set<ISODate>()
+            weeks.add(getWeekStart(weekStart))
+            byMember.set(memberId, weeks)
+          }
+          return {
+            members: state.members.map((member) => {
+              const weeks = byMember.get(member.id)
+              if (!weeks) return member
+              const weeklyOverrides = Object.fromEntries(
+                Object.entries(member.weeklyOverrides).filter(([week]) => !weeks.has(week)),
+              )
+              return { ...member, weeklyOverrides }
+            }),
+          }
+        }),
+      clearAllWeeklyOverrides: (memberId) =>
+        set((state) => ({
+          members: mapMember(state.members, memberId, (member) => ({ ...member, weeklyOverrides: {} })),
+        })),
 
       createBaseline: (name, description) => {
         const { project, phases, members } = get()
