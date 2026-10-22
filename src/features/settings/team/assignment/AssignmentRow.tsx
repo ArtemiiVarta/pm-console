@@ -44,6 +44,7 @@ interface AssignmentRowProps {
   onDraftChange: (draft: string) => void
   onEditKeyDown: (event: KeyboardEvent<HTMLInputElement>) => void
   onEditBlur: () => void
+  readOnly: boolean
   onApplyRange: (member: TeamMember) => void
   onResetAll: (member: TeamMember) => void
 }
@@ -62,6 +63,7 @@ export const AssignmentRow = memo(function AssignmentRow({
   onDraftChange,
   onEditKeyDown,
   onEditBlur,
+  readOnly,
   onApplyRange,
   onResetAll,
 }: AssignmentRowProps) {
@@ -98,7 +100,13 @@ export const AssignmentRow = memo(function AssignmentRow({
 
   return (
     <tr>
-      <RowHeader member={member} name={name} onApplyRange={onApplyRange} onResetAll={onResetAll} />
+      <RowHeader
+        member={member}
+        name={name}
+        readOnly={readOnly}
+        onApplyRange={onApplyRange}
+        onResetAll={onResetAll}
+      />
       <td
         className={cn(ROLE_COL, 'z-10 truncate border-b bg-surface px-3 text-xs text-muted')}
         title={member.role}
@@ -213,38 +221,47 @@ const WeekCell = memo(function WeekCell({
 interface RowHeaderProps {
   member: TeamMember
   name: string
+  readOnly: boolean
   onApplyRange: (member: TeamMember) => void
   onResetAll: (member: TeamMember) => void
 }
 
 /** Sticky name cell with the row menu; memoized so selection changes skip the menu and its tooltip. */
-const RowHeader = memo(function RowHeader({ member, name, onApplyRange, onResetAll }: RowHeaderProps) {
+const RowHeader = memo(function RowHeader({
+  member,
+  name,
+  readOnly,
+  onApplyRange,
+  onResetAll,
+}: RowHeaderProps) {
   return (
     <th scope="row" className={cn(NAME_COL, 'z-10 border-b bg-surface px-3 text-left text-sm font-medium')}>
       <div className="flex items-center justify-between gap-1">
         <span className="truncate" title={name}>
           {name}
         </span>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <IconButton
-              icon={MoreHorizontal}
-              size="icon-sm"
-              label={`Actions for ${name}`}
-              tooltip="More actions for this row"
-            />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start">
-            <DropdownMenuItem onSelect={() => onApplyRange(member)}>
-              <CalendarRange className="h-4 w-4" aria-hidden />
-              Apply % to a date range…
-            </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => onResetAll(member)}>
-              <RotateCcw className="h-4 w-4" aria-hidden />
-              Reset all weeks to default
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        {!readOnly && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <IconButton
+                icon={MoreHorizontal}
+                size="icon-sm"
+                label={`Actions for ${name}`}
+                tooltip="More actions for this row"
+              />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start">
+              <DropdownMenuItem onSelect={() => onApplyRange(member)}>
+                <CalendarRange className="h-4 w-4" aria-hidden />
+                Apply % to a date range…
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => onResetAll(member)}>
+                <RotateCcw className="h-4 w-4" aria-hidden />
+                Reset all weeks to default
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
       </div>
     </th>
   )

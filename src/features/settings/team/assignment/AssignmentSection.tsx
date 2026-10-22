@@ -11,13 +11,13 @@ import type { DisplayUnit } from '@/lib/assignment'
 import { getFullName } from '@/lib/roster'
 import { getProjectRange, getProjectWeeks } from '@/lib/schedule'
 import { cn } from '@/lib/utils'
+import { useForecastSource } from '@/features/settings/team/forecastSource'
 import { useAppStore } from '@/store/useAppStore'
 import type { TeamMember } from '@/store/types'
 
 export function AssignmentSection() {
-  const phases = useAppStore((state) => state.phases)
-  const durationMode = useAppStore((state) => state.project.durationMode)
-  const allMembers = useAppStore((state) => state.members)
+  const { project, phases, members: allMembers, readOnly } = useForecastSource()
+  const durationMode = project.durationMode
   const clearAllWeeklyOverrides = useAppStore((state) => state.clearAllWeeklyOverrides)
 
   const [unit, setUnit] = useState<DisplayUnit>('pct')
@@ -83,12 +83,15 @@ export function AssignmentSection() {
           members={members}
           weeks={weeks}
           unit={unit}
+          readOnly={readOnly}
           onApplyRange={setRangeMember}
           onResetAll={setResetMember}
         />
       )}
 
-      <ApplyRangeDialog member={rangeMember} weeks={weeks} onClose={() => setRangeMember(null)} />
+      {!readOnly && (
+        <ApplyRangeDialog member={rangeMember} weeks={weeks} onClose={() => setRangeMember(null)} />
+      )}
       <ConfirmDialog
         open={resetMember !== null}
         onOpenChange={(open) => !open && setResetMember(null)}

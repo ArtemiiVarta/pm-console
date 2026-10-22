@@ -82,7 +82,9 @@ export function sortRosterRows(rows: RosterRow[], key: RosterSortKey, direction:
       const x = value(a.row)
       const y = value(b.row)
       const compared =
-        typeof x === 'string' && typeof y === 'string' ? x.localeCompare(y) : Number(x) - Number(y)
+        typeof x === 'string' && typeof y === 'string'
+          ? x.localeCompare(y, undefined, { numeric: true })
+          : Number(x) - Number(y)
       return compared * factor || a.index - b.index
     })
     .map(({ row }) => row)

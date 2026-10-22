@@ -23,15 +23,16 @@ const toneClasses: Record<StatTone, { icon: string; value: string }> = {
 export function StatTile({ icon: Icon, label, value, hint, tone = 'default' }: StatTileProps) {
   const classes = toneClasses[tone]
   return (
-    <div className="flex items-start gap-3 rounded-xl border bg-surface p-4 shadow-sm">
-      <div className={cn('flex h-8 w-8 shrink-0 items-center justify-center rounded-lg', classes.icon)}>
-        <Icon className="h-4 w-4" aria-hidden />
-      </div>
-      <div className="flex min-w-0 flex-col">
+    <div className="flex min-w-0 flex-col gap-1.5 rounded-xl border bg-surface p-4 shadow-sm">
+      <div className="flex items-center gap-2">
+        <div className={cn('flex h-7 w-7 shrink-0 items-center justify-center rounded-lg', classes.icon)}>
+          <Icon className="h-4 w-4" aria-hidden />
+        </div>
         <span className="text-xs text-muted">{label}</span>
-        <span className={cn('truncate text-lg font-semibold tabular-nums', classes.value)}>{value}</span>
-        {hint && <span className="text-xs text-muted">{hint}</span>}
       </div>
+      {/* Full width under the label, and wraps instead of truncating large amounts. */}
+      <span className={cn('break-words text-lg font-semibold tabular-nums', classes.value)}>{value}</span>
+      {hint && <span className="text-xs text-muted">{hint}</span>}
     </div>
   )
 }

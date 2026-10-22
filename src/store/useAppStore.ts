@@ -57,7 +57,10 @@ export interface AppActions {
   clearAllWeeklyOverrides: (memberId: string) => void
 
   createBaseline: (name: string, description?: string) => ForecastBaseline
-  deleteBaseline: (id: string) => void
+  /** Deletes a baseline. Refused (returns false) for the one selected for Forecast vs Actual. */
+  deleteBaseline: (id: string) => boolean
+  /** Replaces the working project, phases and team with a copy of the baseline's snapshot. */
+  restoreBaseline: (id: string) => boolean
   selectBaseline: (id: string | null) => void
 }
 
@@ -248,11 +251,19 @@ export const useAppStore = create<AppState>()(
         set((state) => ({ baselines: [...state.baselines, baseline] }))
         return baseline
       },
-      deleteBaseline: (id) =>
-        set((state) => ({
-          baselines: state.baselines.filter((baseline) => baseline.id !== id),
-          selectedBaselineId: state.selectedBaselineId === id ? null : state.selectedBaselineId,
-        })),
+      deleteBaseline: (id) => {
+        if (get().selectedBaselineId === id) return false
+        set((state) => ({ baselines: state.baselines.filter((baseline) => baseline.id !== id) }))
+        return true
+      },
+      restoreBaseline: (id) => {
+        const baseline = get().baselines.find((b) => b.id === id)
+        if (!baseline) return false
+        // Deep copy so later edits never reach the (immutable) snapshot.
+        const { project, phases, members } = structuredClone(baseline.snapshot)
+        set({ project: { ...project, updatedAt: nowISO() }, phases, members })
+        return true
+      },
       selectBaseline: (id) =>
         set((state) => ({
           selectedBaselineId:

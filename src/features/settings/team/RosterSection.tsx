@@ -43,6 +43,7 @@ import {
 } from '@/lib/roster'
 import { getForecastSummary } from '@/lib/summary'
 import { cn } from '@/lib/utils'
+import { useForecastSource } from '@/features/settings/team/forecastSource'
 import { useAppStore } from '@/store/useAppStore'
 import type { Currency } from '@/store/types'
 
@@ -71,9 +72,7 @@ const COLUMNS: Column[] = [
 const headClass = 'text-xs font-medium uppercase tracking-wide text-muted'
 
 export function RosterSection() {
-  const project = useAppStore((state) => state.project)
-  const phases = useAppStore((state) => state.phases)
-  const members = useAppStore((state) => state.members)
+  const { project, phases, members, readOnly } = useForecastSource()
 
   const [dialog, setDialog] = useState<MemberDialogMode | null>(null)
   const [sort, setSort] = useState<{ key: RosterSortKey; direction: SortDirection }>({
@@ -119,14 +118,16 @@ export function RosterSection() {
       icon={Users}
       title="Team members"
       description="Inactive members are greyed out and left out of every total."
-      actions={members.length > 0 ? addButton : undefined}
+      actions={members.length > 0 && !readOnly ? addButton : undefined}
     >
       {members.length === 0 ? (
         <EmptyState
           icon={Users}
           title="No team members yet"
-          hint="Add the people whose time you are forecasting."
-          action={addButton}
+          hint={
+            readOnly ? 'This baseline has no team members.' : 'Add the people whose time you are forecasting.'
+          }
+          action={readOnly ? undefined : addButton}
         />
       ) : (
         <>
@@ -163,19 +164,30 @@ export function RosterSection() {
                     onSort={() => toggleSort(column.key)}
                   />
                 ))}
-                <TableHead className={cn(headClass, 'text-right')}>Actions</TableHead>
+                {!readOnly && <TableHead className={cn(headClass, 'text-right')}>Actions</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
               {visible.map((row) => (
-                <MemberRow key={row.member.id} row={row} currency={project.currency} onDialog={setDialog} />
+                <MemberRow
+                  key={row.member.id}
+                  row={row}
+                  currency={project.currency}
+                  readOnly={readOnly}
+                  onDialog={setDialog}
+                />
               ))}
             </TableBody>
-            <TotalsFooter rows={visible} currency={project.currency} filtered={activeFilter !== ALL_ROLES} />
+            <TotalsFooter
+              rows={visible}
+              currency={project.currency}
+              filtered={activeFilter !== ALL_ROLES}
+              readOnly={readOnly}
+            />
           </Table>
         </>
       )}
-      <MemberDialog mode={dialog} onClose={() => setDialog(null)} />
+      {!readOnly && <MemberDialog mode={dialog} onClose={() => setDialog(null)} />}
     </SectionCard>
   )
 }
@@ -235,10 +247,12 @@ function Pct({ value }: { value: number }) {
 function MemberRow({
   row,
   currency,
+  readOnly,
   onDialog,
 }: {
   row: RosterRow
   currency: Currency
+  readOnly: boolean
   onDialog: (mode: MemberDialogMode) => void
 }) {
   const updateMember = useAppStore((state) => state.updateMember)
@@ -288,46 +302,48 @@ function MemberRow({
       <TableCell className={num}>
         <Money value={row.totals.margin} currency={currency} />
       </TableCell>
-      <TableCell>
-        <div className="flex items-center justify-end gap-0.5">
-          <IconButton
-            icon={Pencil}
-            label={`Edit ${fullName}`}
-            tooltip="Edit this team member"
-            onClick={() => onDialog({ kind: 'edit', member })}
-          />
-          <IconButton
-            icon={Copy}
-            label={`Duplicate ${fullName}`}
-            tooltip="Add a new person with the same role, load and rates"
-            onClick={() => onDialog({ kind: 'duplicate', member })}
-          />
-          <IconButton
-            icon={member.active ? UserX : UserCheck}
-            label={member.active ? `Deactivate ${fullName}` : `Activate ${fullName}`}
-            tooltip={
-              member.active
-                ? 'Deactivate: keep this person but leave them out of totals'
-                : 'Activate: include this person in totals again'
-            }
-            onClick={() => {
-              updateMember(member.id, { active: !member.active })
-              toast.success(member.active ? `${fullName} deactivated` : `${fullName} activated`)
-            }}
-          />
-          <ConfirmDialog
-            title={`Delete ${fullName}?`}
-            description="Their rates and weekly assignments will be removed from the forecast. Saved baselines keep their copy. This cannot be undone."
-            onConfirm={() => {
-              deleteMember(member.id)
-              toast.success(`${fullName} deleted`)
-            }}
-            trigger={
-              <IconButton icon={Trash2} label={`Delete ${fullName}`} tooltip="Delete this team member" />
-            }
-          />
-        </div>
-      </TableCell>
+      {!readOnly && (
+        <TableCell>
+          <div className="flex items-center justify-end gap-0.5">
+            <IconButton
+              icon={Pencil}
+              label={`Edit ${fullName}`}
+              tooltip="Edit this team member"
+              onClick={() => onDialog({ kind: 'edit', member })}
+            />
+            <IconButton
+              icon={Copy}
+              label={`Duplicate ${fullName}`}
+              tooltip="Add a new person with the same role, load and rates"
+              onClick={() => onDialog({ kind: 'duplicate', member })}
+            />
+            <IconButton
+              icon={member.active ? UserX : UserCheck}
+              label={member.active ? `Deactivate ${fullName}` : `Activate ${fullName}`}
+              tooltip={
+                member.active
+                  ? 'Deactivate: keep this person but leave them out of totals'
+                  : 'Activate: include this person in totals again'
+              }
+              onClick={() => {
+                updateMember(member.id, { active: !member.active })
+                toast.success(member.active ? `${fullName} deactivated` : `${fullName} activated`)
+              }}
+            />
+            <ConfirmDialog
+              title={`Delete ${fullName}?`}
+              description="Their rates and weekly assignments will be removed from the forecast. Saved baselines keep their copy. This cannot be undone."
+              onConfirm={() => {
+                deleteMember(member.id)
+                toast.success(`${fullName} deleted`)
+              }}
+              trigger={
+                <IconButton icon={Trash2} label={`Delete ${fullName}`} tooltip="Delete this team member" />
+              }
+            />
+          </div>
+        </TableCell>
+      )}
     </TableRow>
   )
 }
@@ -336,10 +352,12 @@ function TotalsFooter({
   rows,
   currency,
   filtered,
+  readOnly,
 }: {
   rows: RosterRow[]
   currency: Currency
   filtered: boolean
+  readOnly: boolean
 }) {
   const active = rows.filter((row) => row.member.active)
   const hours = active.reduce((sum, row) => sum + row.totals.hours, 0)
@@ -363,7 +381,7 @@ function TotalsFooter({
         <TableCell className={num}>
           <Money value={margin} currency={currency} />
         </TableCell>
-        <TableCell />
+        {!readOnly && <TableCell />}
       </TableRow>
     </TableFooter>
   )

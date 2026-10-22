@@ -34,6 +34,7 @@ import {
 import { formatCurrency, formatNumber, formatWeekLabel } from '@/lib/format'
 import { getMemberHours, getMemberLoadPct, getWeeklyTeamTotals, type WeeklyTeamTotals } from '@/lib/forecast'
 import { cn } from '@/lib/utils'
+import { useForecastSource } from '@/features/settings/team/forecastSource'
 import { useAppStore } from '@/store/useAppStore'
 import type { Currency, ISODate, TeamMember } from '@/store/types'
 
@@ -41,6 +42,8 @@ interface AssignmentGridProps {
   members: TeamMember[]
   weeks: ISODate[]
   unit: DisplayUnit
+  /** Baseline view: navigation and selection only, no edits. */
+  readOnly: boolean
   onApplyRange: (member: TeamMember) => void
   onResetAll: (member: TeamMember) => void
 }
@@ -58,9 +61,15 @@ function readCell(target: EventTarget | null): CellPosition | null {
   return { row: Number(cell.dataset.row), col: Number(cell.dataset.col) }
 }
 
-export function AssignmentGrid({ members, weeks, unit, onApplyRange, onResetAll }: AssignmentGridProps) {
-  const project = useAppStore((state) => state.project)
-  const phases = useAppStore((state) => state.phases)
+export function AssignmentGrid({
+  members,
+  weeks,
+  unit,
+  readOnly,
+  onApplyRange,
+  onResetAll,
+}: AssignmentGridProps) {
+  const { project, phases } = useForecastSource()
   const setWeeklyOverrides = useAppStore((state) => state.setWeeklyOverrides)
   const clearWeeklyOverrides = useAppStore((state) => state.clearWeeklyOverrides)
   const std = project.standardHoursPerWeek
@@ -121,6 +130,7 @@ export function AssignmentGrid({ members, weeks, unit, onApplyRange, onResetAll 
   }
 
   const startEdit = (pos: CellPosition, draft?: string) => {
+    if (readOnly) return
     const member = members[pos.row]
     const week = weeks[pos.col]
     if (!member || !week) return
@@ -217,7 +227,7 @@ export function AssignmentGrid({ members, weeks, unit, onApplyRange, onResetAll 
     } else if (/^[0-9.,]$/.test(key) && !event.metaKey && !event.ctrlKey) {
       event.preventDefault()
       startEdit(focus, key)
-    } else if ((key === 'Delete' || key === 'Backspace') && range) {
+    } else if ((key === 'Delete' || key === 'Backspace') && range && !readOnly) {
       event.preventDefault()
       resetSelection()
     } else if (key === 'Escape') {
@@ -296,16 +306,19 @@ export function AssignmentGrid({ members, weeks, unit, onApplyRange, onResetAll 
 
   return (
     <div className="flex flex-col gap-3">
-      <SelectionToolbar
-        range={range}
-        onSetLoad={setSelection}
-        onReset={resetSelection}
-        onFillRight={fillRight}
-        onClear={() => focus && setAnchor(focus)}
-      />
+      {!readOnly && (
+        <SelectionToolbar
+          range={range}
+          onSetLoad={setSelection}
+          onReset={resetSelection}
+          onFillRight={fillRight}
+          onClear={() => focus && setAnchor(focus)}
+        />
+      )}
       <p className="text-xs text-muted">
-        Click a cell and type to change one week; Enter or Tab moves to the next week, Esc cancels. Leave a
-        cell empty to go back to the default load.
+        {readOnly
+          ? 'Read only: baseline values cannot be changed. You can still move around and select cells.'
+          : 'Click a cell and type to change one week; Enter or Tab moves to the next week, Esc cancels. Leave a cell empty to go back to the default load.'}
       </p>
       <div className="max-h-[70vh] overflow-auto rounded-lg border">
         <table
@@ -413,6 +426,7 @@ export function AssignmentGrid({ members, weeks, unit, onApplyRange, onResetAll 
                   onDraftChange={onDraftChange}
                   onEditKeyDown={onEditKeyDown}
                   onEditBlur={onEditBlur}
+                  readOnly={readOnly}
                   onApplyRange={onApplyRange}
                   onResetAll={onResetAll}
                 />

@@ -35,7 +35,7 @@ beforeEach(() => {
 })
 
 describe('Team Forecast roster', () => {
-  it('shows the empty state, the no-phases notice and the baseline slot', async () => {
+  it('shows the empty state, the no-phases notice and the baseline bar', async () => {
     renderTeam()
     expect(await screen.findByText('No team members yet')).toBeInTheDocument()
     expect(screen.getByRole('note')).toHaveTextContent('Add phases to set the project duration')
@@ -43,7 +43,7 @@ describe('Team Forecast roster', () => {
       'href',
       '#/settings/schedule',
     )
-    expect(screen.getByTestId('baseline-bar-slot')).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'Forecast versions' })).toHaveTextContent('Working forecast')
   })
 
   it('hides the notice once there are phases', async () => {

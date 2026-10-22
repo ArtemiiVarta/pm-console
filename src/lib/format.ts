@@ -49,3 +49,13 @@ export function formatDuration(duration: number, unit: DurationUnit): string {
   const word = unit === 'weeks' ? 'week' : 'day'
   return `${duration} ${word}${duration === 1 ? '' : 's'}`
 }
+
+/** Local date of a timestamp, e.g. `21 Oct 2026`. */
+export function formatTimestampDate(value: string): string {
+  return format(new Date(value), 'dd MMM yyyy')
+}
+
+/** Local date and time of a timestamp, e.g. `21 Oct 2026, 14:05`. */
+export function formatTimestamp(value: string): string {
+  return format(new Date(value), 'dd MMM yyyy, HH:mm')
+}

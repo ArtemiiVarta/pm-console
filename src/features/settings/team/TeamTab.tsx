@@ -1,37 +1,70 @@
-import { useMemo } from 'react'
-import { BadgeDollarSign, Clock, Cpu, GitBranch, Info, Percent, Receipt, Wallet } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { ArrowLeft, BadgeDollarSign, Clock, Cpu, Eye, Info, Percent, Receipt, Wallet } from 'lucide-react'
 import { Link } from 'react-router-dom'
+import { ActionButton } from '@/components/ActionButton'
 import { StatTile } from '@/components/StatTile'
 import { AssignmentSection } from '@/features/settings/team/assignment/AssignmentSection'
+import { BaselineBar } from '@/features/settings/team/baselines/BaselineBar'
+import { useForecastSource, ViewedBaselineContext } from '@/features/settings/team/forecastSource'
 import { RosterSection } from '@/features/settings/team/RosterSection'
-import { formatCurrency, formatNumber, formatPercent } from '@/lib/format'
+import { formatCurrency, formatNumber, formatPercent, formatTimestamp } from '@/lib/format'
 import { getForecastSummary, getMarginTone, type ForecastSummary } from '@/lib/summary'
 import { useAppStore } from '@/store/useAppStore'
-import type { Currency } from '@/store/types'
+import type { Currency, ForecastBaseline } from '@/store/types'
 
 export function TeamTab() {
-  const project = useAppStore((state) => state.project)
-  const phases = useAppStore((state) => state.phases)
-  const members = useAppStore((state) => state.members)
+  const baselines = useAppStore((state) => state.baselines)
+  const [viewingId, setViewingId] = useState<string | null>(null)
+  // A deleted baseline simply drops back to the working forecast.
+  const viewing = baselines.find((baseline) => baseline.id === viewingId) ?? null
+
+  return (
+    <>
+      <BaselineBar viewing={viewing} onView={setViewingId} />
+      <ViewedBaselineContext.Provider value={viewing}>
+        {viewing && <ViewingBanner baseline={viewing} onBack={() => setViewingId(null)} />}
+        <ForecastBody />
+      </ViewedBaselineContext.Provider>
+    </>
+  )
+}
+
+function ForecastBody() {
+  const { project, phases, members, readOnly } = useForecastSource()
   const summary = useMemo(() => getForecastSummary({ project, phases, members }), [project, phases, members])
 
   return (
     <>
-      {/* Slot for the baseline bar (versions), built in a later step. */}
-      <div
-        data-testid="baseline-bar-slot"
-        className="flex items-center gap-2 rounded-xl border border-dashed px-4 py-3 text-xs text-muted"
-      >
-        <GitBranch className="h-4 w-4" aria-hidden />
-        Forecast baselines (saved versions) will appear here.
-      </div>
-
-      {phases.length === 0 && <NoPhasesNotice />}
-
+      {phases.length === 0 && !readOnly && <NoPhasesNotice />}
       <TeamStats summary={summary} currency={project.currency} />
       <RosterSection />
       <AssignmentSection />
     </>
+  )
+}
+
+function ViewingBanner({ baseline, onBack }: { baseline: ForecastBaseline; onBack: () => void }) {
+  return (
+    <div
+      role="status"
+      className="flex flex-wrap items-center gap-3 rounded-xl border border-primary/40 bg-primary/5 px-4 py-3"
+    >
+      <Eye className="h-4 w-4 shrink-0 text-primary" aria-hidden />
+      <p className="text-sm">
+        <span className="font-medium">Viewing baseline {baseline.name} — read only</span>
+        <span className="text-muted"> · saved {formatTimestamp(baseline.createdAt)}</span>
+      </p>
+      <ActionButton
+        size="sm"
+        variant="outline"
+        icon={ArrowLeft}
+        tooltip="Leave the baseline and edit the live forecast again"
+        onClick={onBack}
+        className="ml-auto"
+      >
+        Back to working forecast
+      </ActionButton>
+    </div>
   )
 }
 

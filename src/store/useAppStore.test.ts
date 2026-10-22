@@ -215,15 +215,44 @@ describe('baselines', () => {
     expect(saved?.snapshot.members[0]).not.toBe(store().members[0])
   })
 
-  it('selects only existing baselines and clears the selection when it is deleted', () => {
+  it('selects only existing baselines', () => {
     const { id } = store().createBaseline('B1')
     store().selectBaseline('missing')
     expect(store().selectedBaselineId).toBeNull()
     store().selectBaseline(id)
     expect(store().selectedBaselineId).toBe(id)
-    store().deleteBaseline(id)
-    expect(store().baselines).toEqual([])
-    expect(store().selectedBaselineId).toBeNull()
+  })
+
+  it('refuses to delete the selected baseline until another is selected', () => {
+    const first = store().createBaseline('B1')
+    const second = store().createBaseline('B2')
+    store().selectBaseline(first.id)
+
+    expect(store().deleteBaseline(first.id)).toBe(false)
+    expect(store().baselines.map((b) => b.id)).toEqual([first.id, second.id])
+
+    store().selectBaseline(second.id)
+    expect(store().deleteBaseline(first.id)).toBe(true)
+    expect(store().baselines.map((b) => b.id)).toEqual([second.id])
+    expect(store().selectedBaselineId).toBe(second.id)
+  })
+
+  it('restores a baseline into the working forecast as an independent copy', () => {
+    const memberId = seedForecast()
+    const baseline = store().createBaseline('Kick-off')
+    store().updateProject({ name: 'Changed' })
+    store().addPhase(phaseInput('Extra'))
+    store().deleteMember(memberId)
+
+    expect(store().restoreBaseline(baseline.id)).toBe(true)
+    expect(store().project.name).toBe('Rollout')
+    expect(store().phases.map((p) => p.name)).toEqual(['Build'])
+    expect(store().members.map((m) => m.id)).toEqual([memberId])
+
+    // Editing after a restore leaves the snapshot untouched.
+    store().setWeeklyOverride(memberId, '2026-10-19', 10)
+    expect(store().baselines[0]?.snapshot.members[0]?.weeklyOverrides).toEqual({})
+    expect(store().restoreBaseline('missing')).toBe(false)
   })
 })
 
