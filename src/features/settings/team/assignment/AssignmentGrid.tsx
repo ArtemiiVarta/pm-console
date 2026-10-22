@@ -27,16 +27,23 @@ import {
   getPhaseLanes,
   getRange,
   getRangeCells,
-  getRangeSize,
   parseLoadInput,
   type CellPosition,
   type DisplayUnit,
+  type PendingChange,
+  type PendingChanges,
 } from '@/lib/assignment'
-import { formatCurrency, formatNumber, formatWeekLabel } from '@/lib/format'
-import { getMemberHours, getMemberLoadPct, getWeeklyTeamTotals, type WeeklyTeamTotals } from '@/lib/forecast'
+import { formatCurrency, formatDate, formatNumber, formatWeekLabel } from '@/lib/format'
+import {
+  getMemberHours,
+  getMemberLoadPct,
+  getWeeklyTeamTotals,
+  isBeforeStart,
+  type WeeklyTeamTotals,
+} from '@/lib/forecast'
+import { getFullName } from '@/lib/roster'
 import { cn } from '@/lib/utils'
 import { useForecastSource } from '@/features/settings/team/forecastSource'
-import { useAppStore } from '@/store/useAppStore'
 import type { Currency, ISODate, TeamMember } from '@/store/types'
 
 interface AssignmentGridProps {
@@ -45,6 +52,12 @@ interface AssignmentGridProps {
   unit: DisplayUnit
   /** Baseline view: navigation and selection only, no edits. */
   readOnly: boolean
+  /** Unsaved changes, to mark edited cells. */
+  pending: PendingChanges
+  /** Show the Cost and Revenue footer rows. */
+  showFinancials: boolean
+  /** Edits go to the pending set; nothing is saved until the user clicks Save changes. */
+  onChange: (changes: PendingChange[]) => void
   onApplyRange: (member: TeamMember) => void
   onResetAll: (member: TeamMember) => void
 }
@@ -67,12 +80,13 @@ export function AssignmentGrid({
   weeks,
   unit,
   readOnly,
+  pending,
+  showFinancials,
+  onChange,
   onApplyRange,
   onResetAll,
 }: AssignmentGridProps) {
   const { project, phases } = useForecastSource()
-  const setWeeklyOverrides = useAppStore((state) => state.setWeeklyOverrides)
-  const clearWeeklyOverrides = useAppStore((state) => state.clearWeeklyOverrides)
   const std = project.standardHoursPerWeek
 
   const [anchor, setAnchor] = useState<CellPosition | null>(null)
@@ -135,6 +149,12 @@ export function AssignmentGrid({
     const member = members[pos.row]
     const week = weeks[pos.col]
     if (!member || !week) return
+    if (isBeforeStart(member, week)) {
+      toast.info(
+        `${getFullName(member)} starts on ${formatDate(member.startDate ?? week)}; earlier weeks are 0%.`,
+      )
+      return
+    }
     const pct = getMemberLoadPct(member, week)
     const current = unit === 'pct' ? String(pct) : formatNumber(getMemberHours(member, week, std), 2)
     const state = { ...pos, draft: draft ?? current, selectAll: draft === undefined }
@@ -155,12 +175,7 @@ export function AssignmentGrid({
       toast.error(parsed.message)
       return false
     }
-    if (parsed.kind === 'clear') clearWeeklyOverrides([{ memberId: member.id, weekStart }])
-    else if (
-      parsed.pct !== getMemberLoadPct(member, weekStart) ||
-      member.weeklyOverrides[weekStart] === undefined
-    )
-      setWeeklyOverrides([{ memberId: member.id, weekStart, pct: parsed.pct }])
+    onChange([{ memberId: member.id, weekStart, pct: parsed.kind === 'clear' ? null : parsed.pct }])
     editingRef.current = null
     setEditing(null)
     return true
@@ -284,22 +299,33 @@ export function AssignmentGrid({
     setTooltip(null)
   }
 
+  /** Selected cells, minus weeks before a member's start date (always 0%). */
+  const editableCells = () => {
+    if (!range) return []
+    const byId = new Map(members.map((member) => [member.id, member]))
+    return getRangeCells(range, members, weeks).filter((cell) => {
+      const member = byId.get(cell.memberId)
+      return member !== undefined && !isBeforeStart(member, cell.weekStart)
+    })
+  }
+
   const resetSelection = () => {
-    if (!range) return
-    clearWeeklyOverrides(getRangeCells(range, members, weeks))
-    toast.success('Selected weeks reset to the default load')
+    onChange(editableCells().map((cell) => ({ ...cell, pct: null })))
   }
 
   const setSelection = (pct: number) => {
-    if (!range) return
-    setWeeklyOverrides(getRangeCells(range, members, weeks).map((cell) => ({ ...cell, pct })))
-    toast.success(`Load set to ${formatNumber(pct, 1)}% for ${getRangeSize(range)} cells`)
+    onChange(editableCells().map((cell) => ({ ...cell, pct })))
   }
 
   const fillRight = () => {
     if (!range) return
-    setWeeklyOverrides(getFillRightUpdates(range, members, weeks))
-    toast.success('Copied the first selected week to the right')
+    const byId = new Map(members.map((member) => [member.id, member]))
+    onChange(
+      getFillRightUpdates(range, members, weeks).filter((update) => {
+        const member = byId.get(update.memberId)
+        return member !== undefined && !isBeforeStart(member, update.weekStart)
+      }),
+    )
   }
 
   const tooltipText = (() => {
@@ -309,7 +335,7 @@ export function AssignmentGrid({
     if (!member || !week) return null
     const pct = getMemberLoadPct(member, week)
     const hours = getMemberHours(member, week, std)
-    return `Week of ${formatWeekLabel(week)} · ${formatNumber(pct, 1)}% · ${formatNumber(hours, 1)} h · capacity ${formatNumber(hours * (member.capacityPct / 100), 1)} h`
+    return `Week of ${formatWeekLabel(week)} · ${formatNumber(pct, 1)}% · ${formatNumber(hours, 1)} h · developer capacity ${formatNumber(hours * (member.capacityPct / 100), 1)} h${pending[member.id]?.[week] !== undefined ? ' · unsaved' : ''}`
   })()
 
   const headCell = 'border-b bg-surface text-xs font-medium uppercase tracking-wide text-muted'
@@ -328,13 +354,13 @@ export function AssignmentGrid({
       <p className="text-xs text-muted">
         {readOnly
           ? 'Read only: baseline values cannot be changed. You can still move around and select cells.'
-          : 'Click a cell and type to change one week; Enter or Tab moves to the next week, Esc cancels. Leave a cell empty to go back to the default load.'}
+          : 'Click a cell and type to change one week; Enter or Tab moves to the next week, Esc cancels. Leave a cell empty to go back to the allocation. Changes are marked with a dashed outline until you save them.'}
       </p>
       <div className="max-h-[70vh] overflow-auto rounded-lg border">
         <table
           ref={tableRef}
           role="grid"
-          aria-label="Weekly assignment"
+          aria-label="Planned allocation"
           aria-rowcount={members.length}
           className="w-max border-separate border-spacing-0 text-sm"
         >
@@ -388,7 +414,7 @@ export function AssignmentGrid({
                 Role
               </th>
               <th scope="col" className={cn(DEFAULT_COL, headCell, 'z-10 border-r px-3 py-2 text-right')}>
-                Default
+                Allocation
               </th>
               {weeks.map((week) => (
                 <th
@@ -439,13 +465,19 @@ export function AssignmentGrid({
                   onEditKeyDown={onEditKeyDown}
                   onEditBlur={onEditBlur}
                   readOnly={readOnly}
+                  pendingWeeks={pending[member.id]}
                   onApplyRange={onApplyRange}
                   onResetAll={onResetAll}
                 />
               )
             })}
           </tbody>
-          <GridFooter weeks={weeks} weeklyTotals={weeklyTotals} currency={project.currency} />
+          <GridFooter
+            weeks={weeks}
+            weeklyTotals={weeklyTotals}
+            currency={project.currency}
+            showFinancials={showFinancials}
+          />
         </table>
       </div>
       <GridTooltip target={tooltip} text={tooltipText} />
@@ -457,10 +489,16 @@ interface GridFooterProps {
   weeks: ISODate[]
   weeklyTotals: WeeklyTeamTotals[]
   currency: Currency
+  showFinancials: boolean
 }
 
 /** Weekly team totals; memoized so selection and focus changes skip these rows. */
-const GridFooter = memo(function GridFooter({ weeks, weeklyTotals, currency }: GridFooterProps) {
+const GridFooter = memo(function GridFooter({
+  weeks,
+  weeklyTotals,
+  currency,
+  showFinancials,
+}: GridFooterProps) {
   const money = (value: number) => formatCurrency(value, currency)
   const grandTotals = weeklyTotals.reduce(
     (sum, week) => ({
@@ -471,24 +509,31 @@ const GridFooter = memo(function GridFooter({ weeks, weeklyTotals, currency }: G
     }),
     { hours: 0, capacityHours: 0, cost: 0, revenue: 0 },
   )
-  const footerRows = [
+  const allRows = [
     {
-      label: 'Total hours',
+      label: 'Planned hours',
       values: weeklyTotals.map((w) => formatNumber(w.hours, 1)),
       total: formatNumber(grandTotals.hours, 1),
     },
     {
-      label: 'Development capacity',
+      label: 'Developer capacity',
       values: weeklyTotals.map((w) => formatNumber(w.capacityHours, 1)),
       total: formatNumber(grandTotals.capacityHours, 1),
     },
-    { label: 'Cost', values: weeklyTotals.map((w) => money(w.cost)), total: money(grandTotals.cost) },
+    {
+      label: 'Cost',
+      financial: true,
+      values: weeklyTotals.map((w) => money(w.cost)),
+      total: money(grandTotals.cost),
+    },
     {
       label: 'Revenue',
+      financial: true,
       values: weeklyTotals.map((w) => money(w.revenue)),
       total: money(grandTotals.revenue),
     },
   ]
+  const footerRows = showFinancials ? allRows : allRows.filter((row) => !row.financial)
 
   return (
     <tfoot>

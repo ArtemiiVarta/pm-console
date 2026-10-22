@@ -1,31 +1,106 @@
-import { useMemo, useState } from 'react'
-import { CalendarDays, Clock, Percent, RotateCcw, Users } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState, type KeyboardEvent } from 'react'
+import { CalendarDays, Clock, Percent, RotateCcw, Save, Users } from 'lucide-react'
 import { toast } from 'sonner'
 import { ActionButton } from '@/components/ActionButton'
-import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { EmptyState } from '@/components/EmptyState'
 import { SectionCard } from '@/components/SectionCard'
+import { Badge } from '@/components/ui/badge'
 import { ApplyRangeDialog } from '@/features/settings/team/assignment/ApplyRangeDialog'
 import { AssignmentGrid } from '@/features/settings/team/assignment/AssignmentGrid'
-import type { DisplayUnit } from '@/lib/assignment'
+import { usePendingAllocation } from '@/features/settings/team/assignment/usePendingAllocation'
+import { useForecastSource } from '@/features/settings/team/forecastSource'
+import {
+  countPendingChanges,
+  getPreviewMember,
+  getResetAllChanges,
+  toStoreOperations,
+  type DisplayUnit,
+  type PendingChange,
+} from '@/lib/assignment'
+import { isBeforeStart } from '@/lib/forecast'
 import { getFullName } from '@/lib/roster'
 import { getProjectRange, getProjectWeeks } from '@/lib/schedule'
 import { cn } from '@/lib/utils'
-import { useForecastSource } from '@/features/settings/team/forecastSource'
 import { useAppStore } from '@/store/useAppStore'
-import type { TeamMember } from '@/store/types'
+import { useUiPrefs } from '@/store/useUiPrefs'
+import type { ISODate, TeamMember } from '@/store/types'
 
 export function AssignmentSection() {
   const { project, phases, members: allMembers, readOnly } = useForecastSource()
   const durationMode = project.durationMode
-  const clearAllWeeklyOverrides = useAppStore((state) => state.clearAllWeeklyOverrides)
+  const setWeeklyOverrides = useAppStore((state) => state.setWeeklyOverrides)
+  const clearWeeklyOverrides = useAppStore((state) => state.clearWeeklyOverrides)
+  const showFinancials = useUiPrefs((state) => state.showFinancials)
+  const pending = usePendingAllocation((state) => state.pending)
+  const addPending = usePendingAllocation((state) => state.add)
+  const discardPending = usePendingAllocation((state) => state.discard)
 
   const [unit, setUnit] = useState<DisplayUnit>('pct')
   const [rangeMember, setRangeMember] = useState<TeamMember | null>(null)
-  const [resetMember, setResetMember] = useState<TeamMember | null>(null)
 
   const weeks = useMemo(() => getProjectWeeks(getProjectRange(phases, durationMode)), [phases, durationMode])
-  const members = useMemo(() => allMembers.filter((member) => member.active), [allMembers])
+  const saved = useMemo(() => allMembers.filter((member) => member.active), [allMembers])
+  // A baseline view never shows working-forecast edits.
+  const visiblePending = useMemo(() => (readOnly ? {} : pending), [readOnly, pending])
+  /** Members as they will be after saving: the grid and its totals preview unsaved edits. */
+  const members = useMemo(
+    () => saved.map((member) => getPreviewMember(member, visiblePending[member.id])),
+    [saved, visiblePending],
+  )
+  const changeCount = countPendingChanges(visiblePending, saved)
+  const hasChanges = changeCount > 0
+
+  const onChange = useCallback(
+    (changes: PendingChange[]) => {
+      if (changes.length > 0) addPending(changes, saved)
+    },
+    [addPending, saved],
+  )
+
+  const save = () => {
+    if (!hasChanges) return
+    const { updates, clears } = toStoreOperations(pending, saved)
+    if (clears.length > 0) clearWeeklyOverrides(clears)
+    if (updates.length > 0) setWeeklyOverrides(updates)
+    discardPending()
+    toast.success(`${changeCount} ${changeCount === 1 ? 'change' : 'changes'} saved`)
+  }
+
+  const discard = () => {
+    if (!hasChanges) return
+    discardPending()
+    toast.success('Unsaved changes discarded')
+  }
+
+  // Warn before closing or reloading the tab with unsaved edits.
+  useEffect(() => {
+    if (!hasChanges) return
+    const warn = (event: BeforeUnloadEvent) => event.preventDefault()
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
+  }, [hasChanges])
+
+  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 's') {
+      event.preventDefault()
+      save()
+    }
+  }
+
+  const applyRange = (member: TeamMember, fromWeek: ISODate, toWeek: ISODate, pct: number) => {
+    const [first, last] = fromWeek <= toWeek ? [fromWeek, toWeek] : [toWeek, fromWeek]
+    onChange(
+      weeks
+        .filter((week) => week >= first && week <= last && !isBeforeStart(member, week))
+        .map((weekStart) => ({ memberId: member.id, weekStart, pct })),
+    )
+  }
+
+  const resetAll = (member: TeamMember) => {
+    const original = saved.find((m) => m.id === member.id) ?? member
+    onChange(getResetAllChanges(original, pending))
+    toast.info(`${getFullName(member)}: all weeks set back to the allocation. Save changes to apply.`)
+  }
 
   const unitToggle = (
     <div role="group" aria-label="Show cells as" className="inline-flex rounded-lg bg-subtle p-1">
@@ -59,12 +134,55 @@ export function AssignmentSection() {
     </div>
   )
 
+  // Always rendered while editing is possible, so the layout does not jump when changes appear.
+  const saveBar = !readOnly && (
+    <div className="flex flex-wrap items-center gap-2">
+      {hasChanges ? (
+        <Badge
+          variant="outline"
+          className="border-warning/40 bg-warning/10 py-1 text-warning"
+          aria-live="polite"
+        >
+          {changeCount} unsaved {changeCount === 1 ? 'change' : 'changes'}
+        </Badge>
+      ) : (
+        <span className="text-xs text-muted" aria-live="polite">
+          All changes saved
+        </span>
+      )}
+      <ActionButton
+        size="sm"
+        variant="outline"
+        icon={RotateCcw}
+        tooltip={hasChanges ? 'Discard unsaved changes in this grid' : 'Nothing to discard'}
+        aria-disabled={!hasChanges}
+        className={cn(!hasChanges && 'cursor-not-allowed opacity-50')}
+        onClick={discard}
+      >
+        Discard
+      </ActionButton>
+      <ActionButton
+        size="sm"
+        icon={Save}
+        tooltip={hasChanges ? 'Save the changed weeks' : 'Nothing to save'}
+        shortcut="Ctrl+S"
+        aria-disabled={!hasChanges}
+        className={cn(!hasChanges && 'cursor-not-allowed opacity-50')}
+        onClick={save}
+      >
+        Save changes
+      </ActionButton>
+    </div>
+  )
+
+  const canShowGrid = weeks.length > 0 && members.length > 0
+
   return (
     <SectionCard
       icon={CalendarDays}
-      title="Weekly assignment"
-      description="Load per person per week. Muted values use the default load; a dot marks a weekly override."
-      actions={weeks.length > 0 && members.length > 0 ? unitToggle : undefined}
+      title="Planned allocation"
+      description="Load per person per week. Muted values use the allocation; a dot marks a weekly override."
+      actions={canShowGrid ? unitToggle : undefined}
     >
       {weeks.length === 0 ? (
         <EmptyState
@@ -76,35 +194,39 @@ export function AssignmentSection() {
         <EmptyState
           icon={Users}
           title="No active team members"
-          hint="Add or activate team members above to assign their weeks."
+          hint="Add or activate team members above to plan their weeks."
         />
       ) : (
-        <AssignmentGrid
-          members={members}
-          weeks={weeks}
-          unit={unit}
-          readOnly={readOnly}
-          onApplyRange={setRangeMember}
-          onResetAll={setResetMember}
-        />
+        <div onKeyDown={onKeyDown} className="flex flex-col gap-3">
+          {saveBar}
+          {hasChanges && (
+            <p className="text-xs text-muted">
+              The grid and its totals show your unsaved changes. Totals above and baselines use saved values
+              only.
+            </p>
+          )}
+          <AssignmentGrid
+            members={members}
+            weeks={weeks}
+            unit={unit}
+            readOnly={readOnly}
+            pending={visiblePending}
+            showFinancials={showFinancials}
+            onChange={onChange}
+            onApplyRange={setRangeMember}
+            onResetAll={resetAll}
+          />
+        </div>
       )}
 
       {!readOnly && (
-        <ApplyRangeDialog member={rangeMember} weeks={weeks} onClose={() => setRangeMember(null)} />
+        <ApplyRangeDialog
+          member={rangeMember}
+          weeks={weeks}
+          onApply={applyRange}
+          onClose={() => setRangeMember(null)}
+        />
       )}
-      <ConfirmDialog
-        open={resetMember !== null}
-        onOpenChange={(open) => !open && setResetMember(null)}
-        title={resetMember ? `Reset all weeks for ${getFullName(resetMember)}?` : 'Reset all weeks?'}
-        description="Every weekly override is removed and all weeks go back to the default load. This cannot be undone."
-        confirmLabel="Reset all weeks"
-        confirmIcon={RotateCcw}
-        onConfirm={() => {
-          if (!resetMember) return
-          clearAllWeeklyOverrides(resetMember.id)
-          toast.success(`${getFullName(resetMember)}: all weeks reset to default`)
-        }}
-      />
     </SectionCard>
   )
 }

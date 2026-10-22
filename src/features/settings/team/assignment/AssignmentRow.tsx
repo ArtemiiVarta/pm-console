@@ -17,7 +17,7 @@ import {
 } from '@/features/settings/team/assignment/gridLayout'
 import type { DisplayUnit } from '@/lib/assignment'
 import { formatNumber } from '@/lib/format'
-import { getMemberHours, getMemberLoadPct } from '@/lib/forecast'
+import { getMemberHours, getMemberLoadPct, isBeforeStart } from '@/lib/forecast'
 import { getFullName } from '@/lib/roster'
 import { cn } from '@/lib/utils'
 import type { ISODate, TeamMember } from '@/store/types'
@@ -47,6 +47,8 @@ interface AssignmentRowProps {
   onEditKeyDown: (event: KeyboardEvent<HTMLInputElement>) => void
   onEditBlur: () => void
   readOnly: boolean
+  /** Unsaved changes for this member, keyed by week. */
+  pendingWeeks: Record<ISODate, number | null> | undefined
   onApplyRange: (member: TeamMember) => void
   onResetAll: (member: TeamMember) => void
 }
@@ -67,6 +69,7 @@ export const AssignmentRow = memo(function AssignmentRow({
   onEditKeyDown,
   onEditBlur,
   readOnly,
+  pendingWeeks,
   onApplyRange,
   onResetAll,
 }: AssignmentRowProps) {
@@ -89,6 +92,8 @@ export const AssignmentRow = memo(function AssignmentRow({
         hours={hours}
         capHours={hours * (member.capacityPct / 100)}
         isOverride={member.weeklyOverrides[week] !== undefined}
+        beforeStart={isBeforeStart(member, week)}
+        unsaved={pendingWeeks?.[week] !== undefined}
         selected={col >= selectedLeft && col <= selectedRight}
         focused={col === focusedCol}
         tabbable={col === tabbableCol}
@@ -144,6 +149,10 @@ interface WeekCellProps {
   hours: number
   capHours: number
   isOverride: boolean
+  /** Week ends before the member's start date: always 0%, not editable. */
+  beforeStart: boolean
+  /** Edited but not saved yet. */
+  unsaved: boolean
   selected: boolean
   focused: boolean
   tabbable: boolean
@@ -166,6 +175,8 @@ const WeekCell = memo(function WeekCell({
   hours,
   capHours,
   isOverride,
+  beforeStart,
+  unsaved,
   selected,
   focused,
   tabbable,
@@ -185,12 +196,14 @@ const WeekCell = memo(function WeekCell({
       data-col={col}
       tabIndex={tabbable ? 0 : -1}
       aria-selected={selected}
-      aria-label={`${name}, week of ${week}: ${formatNumber(pct, 1)}%, ${formatNumber(hours, 1)} h, capacity ${formatNumber(capHours, 1)} h${isOverride ? ', weekly override' : ', default load'}${over ? ', overallocated' : ''}`}
+      aria-label={`${name}, week of ${week}: ${formatNumber(pct, 1)}%, ${formatNumber(hours, 1)} h, capacity ${formatNumber(capHours, 1)} h${beforeStart ? ', before start date' : isOverride ? ', weekly override' : ', allocation'}${over ? ', overallocated' : ''}${unsaved ? ', unsaved' : ''}`}
       className={cn(
         WEEK_COL,
         'relative h-9 cursor-cell select-none border-b border-l px-1.5 text-right text-xs tabular-nums outline-none',
         over && 'bg-warning/15 text-warning',
         !over && pct === 0 && 'text-muted/70',
+        beforeStart && 'cursor-not-allowed bg-subtle/60',
+        unsaved && 'italic outline-dashed outline-1 -outline-offset-4 outline-primary',
         !over && pct !== 0 && (isOverride ? 'font-medium text-foreground' : 'text-muted'),
         selected && 'bg-primary/10',
         focused && 'ring-2 ring-inset ring-primary',
@@ -214,7 +227,7 @@ const WeekCell = memo(function WeekCell({
       ) : (
         <span className="flex items-center justify-end gap-0.5">
           {over && <AlertTriangle className="h-3 w-3 shrink-0" aria-hidden />}
-          {formatLoad(pct, hours, unit)}
+          {beforeStart ? '—' : formatLoad(pct, hours, unit)}
         </span>
       )}
       {isOverride && !isEditing && (

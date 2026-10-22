@@ -34,7 +34,7 @@ beforeEach(() => {
   useAuth.setState({ isAuthenticated: false })
 })
 
-it('login → add phase → add member → edit a week → create baseline, keyboard only', async () => {
+it('login → add phase → add member → edit and save a week → create baseline, keyboard only', async () => {
   const user = userEvent.setup()
   window.location.hash = '#/settings/schedule'
   render(<App />)
@@ -64,6 +64,8 @@ it('login → add phase → add member → edit a week → create baseline, keyb
   // 4. Edit a week: Tab into the grid (first cell), type, Enter saves.
   await tabTo(user, (el) => el.getAttribute('role') === 'gridcell', 'the weekly grid')
   await user.keyboard('{ArrowRight}60{Enter}')
+  // Grid edits stay pending until saved; Ctrl+S saves from the keyboard.
+  await user.keyboard('{Control>}s{/Control}')
   const overrides = useAppStore.getState().members[0]?.weeklyOverrides ?? {}
   expect(Object.values(overrides)).toEqual([60])
 

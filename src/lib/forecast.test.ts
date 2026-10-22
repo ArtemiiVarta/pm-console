@@ -6,6 +6,7 @@ import {
   getRateMargin,
   getTeamTotals,
   getWeeklyTeamTotals,
+  isBeforeStart,
 } from '@/lib/forecast'
 import { getPhaseColor, PHASE_PALETTE } from '@/lib/palette'
 import type { TeamMember } from '@/store/types'
@@ -134,5 +135,27 @@ describe('getPhaseColor', () => {
     expect(getPhaseColor(0)).toBe(PHASE_PALETTE[0])
     expect(getPhaseColor(7)).toBe(PHASE_PALETTE[7])
     expect(getPhaseColor(8)).toBe(PHASE_PALETTE[0])
+  })
+})
+
+describe('start date', () => {
+  // W1 = Mon 19 Oct, W2 = Mon 26 Oct
+  it('counts weeks that end before the start date as 0%, ignoring overrides', () => {
+    const m = member({ startDate: '2026-10-28', weeklyOverrides: { [W1]: 80 } })
+    expect(isBeforeStart(m, W1)).toBe(true)
+    expect(getMemberLoadPct(m, W1)).toBe(0)
+    expect(getMemberHours(m, W1, STD)).toBe(0)
+  })
+
+  it('counts the week that contains the start date in full', () => {
+    const m = member({ startDate: '2026-10-28' })
+    expect(isBeforeStart(m, W2)).toBe(false)
+    expect(getMemberLoadPct(m, W2)).toBe(100)
+    expect(isBeforeStart(member({ startDate: '2026-10-25' }), W1)).toBe(false) // Sunday = last day of W1
+  })
+
+  it('has no effect without a start date, and flows into totals', () => {
+    expect(isBeforeStart(member(), W1)).toBe(false)
+    expect(getMemberTotals(member({ startDate: '2026-10-26' }), [W1, W2], STD).hours).toBe(40)
   })
 })

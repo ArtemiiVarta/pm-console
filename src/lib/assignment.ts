@@ -140,3 +140,75 @@ export function getFillRightUpdates(
   }
   return updates
 }
+
+/** Unsaved grid edits per member and week: a load %, or null for "back to the default load". */
+export type PendingChanges = Record<string, Record<ISODate, number | null>>
+
+export interface PendingChange {
+  memberId: string
+  weekStart: ISODate
+  /** null resets the week to the member's default load. */
+  pct: number | null
+}
+
+/**
+ * Adds changes to the pending set. A change that matches what is already saved is dropped,
+ * so editing a cell back to its saved value leaves nothing pending.
+ */
+export function addPendingChanges(
+  pending: PendingChanges,
+  changes: PendingChange[],
+  members: TeamMember[],
+): PendingChanges {
+  const next: PendingChanges = { ...pending }
+  for (const { memberId, weekStart, pct } of changes) {
+    const member = members.find((m) => m.id === memberId)
+    if (!member) continue
+    const saved = member.weeklyOverrides[weekStart]
+    const weeks = { ...next[memberId] }
+    const matchesSaved = pct === null ? saved === undefined : saved === pct
+    if (matchesSaved) delete weeks[weekStart]
+    else weeks[weekStart] = pct === null ? null : Math.min(MAX_LOAD_PCT, Math.max(0, pct))
+    if (Object.keys(weeks).length > 0) next[memberId] = weeks
+    else delete next[memberId]
+  }
+  return next
+}
+
+/** Pending changes that reset every saved override of a member (and drop its other pending edits). */
+export function getResetAllChanges(member: TeamMember, pending: PendingChanges): PendingChange[] {
+  const weeks = new Set([...Object.keys(member.weeklyOverrides), ...Object.keys(pending[member.id] ?? {})])
+  return [...weeks].map((weekStart) => ({ memberId: member.id, weekStart, pct: null }))
+}
+
+/** The member as it would be after saving its pending changes (same object when it has none). */
+export function getPreviewMember(
+  member: TeamMember,
+  changes: Record<ISODate, number | null> | undefined,
+): TeamMember {
+  if (!changes) return member
+  const weeklyOverrides = { ...member.weeklyOverrides }
+  for (const [week, pct] of Object.entries(changes)) {
+    if (pct === null) delete weeklyOverrides[week]
+    else weeklyOverrides[week] = pct
+  }
+  return { ...member, weeklyOverrides }
+}
+
+/** Number of pending cell changes for members that still exist. */
+export function countPendingChanges(pending: PendingChanges, members: TeamMember[]): number {
+  return members.reduce((sum, member) => sum + Object.keys(pending[member.id] ?? {}).length, 0)
+}
+
+/** Splits pending changes into store updates (set a %) and clears (back to default). */
+export function toStoreOperations(pending: PendingChanges, members: TeamMember[]) {
+  const updates: WeeklyOverrideUpdate[] = []
+  const clears: WeeklyCell[] = []
+  for (const member of members) {
+    for (const [weekStart, pct] of Object.entries(pending[member.id] ?? {})) {
+      if (pct === null) clears.push({ memberId: member.id, weekStart })
+      else updates.push({ memberId: member.id, weekStart, pct })
+    }
+  }
+  return { updates, clears }
+}

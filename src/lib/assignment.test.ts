@@ -1,5 +1,10 @@
 import {
+  addPendingChanges,
+  countPendingChanges,
   getFillRightUpdates,
+  getPreviewMember,
+  getResetAllChanges,
+  toStoreOperations,
   getPhaseLanes,
   getRange,
   getRangeCells,
@@ -117,6 +122,60 @@ describe('ranges', () => {
     expect(getFillRightUpdates({ top: 0, bottom: 1, left: 1, right: 2 }, members, WEEKS)).toEqual([
       { memberId: 'a', weekStart: '2026-11-02', pct: 60 },
       { memberId: 'b', weekStart: '2026-11-02', pct: 50 },
+    ])
+  })
+})
+
+describe('pending changes', () => {
+  const saved = [member('a', { weeklyOverrides: { '2026-10-19': 40 } }), member('b')]
+
+  it('adds changes, dropping ones that match what is saved', () => {
+    let pending = addPendingChanges({}, [{ memberId: 'a', weekStart: '2026-10-26', pct: 60 }], saved)
+    expect(pending).toEqual({ a: { '2026-10-26': 60 } })
+
+    // Back to the saved value → nothing pending for that week.
+    pending = addPendingChanges(pending, [{ memberId: 'a', weekStart: '2026-10-26', pct: null }], saved)
+    expect(pending).toEqual({})
+
+    // Same as the saved override → nothing pending; clearing a saved override → pending null.
+    expect(addPendingChanges({}, [{ memberId: 'a', weekStart: '2026-10-19', pct: 40 }], saved)).toEqual({})
+    expect(addPendingChanges({}, [{ memberId: 'a', weekStart: '2026-10-19', pct: null }], saved)).toEqual({
+      a: { '2026-10-19': null },
+    })
+  })
+
+  it('clamps to 0–200% and ignores unknown members', () => {
+    const pending = addPendingChanges(
+      {},
+      [
+        { memberId: 'b', weekStart: '2026-10-19', pct: 500 },
+        { memberId: 'gone', weekStart: '2026-10-19', pct: 10 },
+      ],
+      saved,
+    )
+    expect(pending).toEqual({ b: { '2026-10-19': 200 } })
+  })
+
+  it('previews, counts and converts pending changes for saving', () => {
+    const pending = { a: { '2026-10-19': null, '2026-10-26': 70 }, gone: { '2026-10-19': 5 } }
+    const [a] = saved
+    if (!a) throw new Error('no member')
+    expect(getPreviewMember(a, pending.a).weeklyOverrides).toEqual({ '2026-10-26': 70 })
+    expect(getPreviewMember(a, undefined)).toBe(a)
+    expect(countPendingChanges(pending, saved)).toBe(2)
+    expect(toStoreOperations(pending, saved)).toEqual({
+      updates: [{ memberId: 'a', weekStart: '2026-10-26', pct: 70 }],
+      clears: [{ memberId: 'a', weekStart: '2026-10-19' }],
+    })
+  })
+
+  it('resets every saved and pending week of a member', () => {
+    const [a] = saved
+    if (!a) throw new Error('no member')
+    const changes = getResetAllChanges(a, { a: { '2026-11-02': 30 } })
+    expect(changes).toEqual([
+      { memberId: 'a', weekStart: '2026-10-19', pct: null },
+      { memberId: 'a', weekStart: '2026-11-02', pct: null },
     ])
   })
 })

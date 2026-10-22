@@ -1,3 +1,5 @@
+import { addDays } from 'date-fns'
+import { parseISODate, toISODate } from '@/lib/dates'
 import type { ForecastTotals, ISODate, TeamMember } from '@/store/types'
 
 export interface MemberTotals extends ForecastTotals {
@@ -19,7 +21,7 @@ export interface RateMargin {
 }
 
 type RateFields = Pick<TeamMember, 'costRate' | 'priceRate'>
-type LoadFields = Pick<TeamMember, 'defaultLoadPct' | 'weeklyOverrides'>
+type LoadFields = Pick<TeamMember, 'defaultLoadPct' | 'weeklyOverrides' | 'startDate'>
 type ForecastMember = LoadFields & RateFields & Pick<TeamMember, 'capacityPct'>
 
 /** margin / revenue, or 0 when revenue is 0. */
@@ -27,8 +29,15 @@ export function getMarginPct(margin: number, revenue: number): number {
   return revenue === 0 ? 0 : margin / revenue
 }
 
-/** Weekly override when set, otherwise the member's default load. */
+/** True when the whole Mon–Sun week ends before the member's start date. */
+export function isBeforeStart(member: Pick<TeamMember, 'startDate'>, weekStart: ISODate): boolean {
+  if (!member.startDate) return false
+  return toISODate(addDays(parseISODate(weekStart), 6)) < member.startDate
+}
+
+/** 0 before the member's start date; otherwise the weekly override when set, or the default load. */
 export function getMemberLoadPct(member: LoadFields, weekStart: ISODate): number {
+  if (isBeforeStart(member, weekStart)) return 0
   return member.weeklyOverrides[weekStart] ?? member.defaultLoadPct
 }
 

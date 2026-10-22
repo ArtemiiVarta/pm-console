@@ -76,7 +76,7 @@ function NoPhasesNotice() {
     >
       <Info className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden />
       <p>
-        Add phases to set the project duration — weekly assignments depend on it.{' '}
+        Add phases to set the project duration — the planned allocation depends on it.{' '}
         <Link
           to="/settings/schedule"
           className="font-medium text-primary underline-offset-4 hover:underline focus-visible:rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
@@ -115,9 +115,9 @@ function TeamStats({ summary, currency }: { summary: ForecastSummary; currency: 
       />
       <StatTile
         icon={Cpu}
-        label="Development capacity"
+        label="Developer capacity"
         value={`${formatNumber(totals.capacityHours)} h`}
-        hint="Hours × capacity %"
+        hint="Planned hours × developer capacity %"
       />
       <StatTile icon={Receipt} label="Total cost" value={money(totals.cost)} hint="Hours × cost rate" />
       <StatTile

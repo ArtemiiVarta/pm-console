@@ -197,3 +197,92 @@ describe('Team Forecast roster', () => {
     expect(await screen.findByText('No team members yet')).toBeInTheDocument()
   })
 })
+
+describe('Team members columns', () => {
+  const headers = () =>
+    within(screen.getByRole('table', { name: 'Team members' }))
+      .getAllByRole('columnheader')
+      .map((th) => th.textContent?.trim())
+
+  it('uses the renamed columns, with start date and without weekly hours', async () => {
+    store().addMember({ ...ada, startDate: '2026-11-02' })
+    store().addMember({ ...ada, firstName: 'Bob', email: 'bob@example.com' })
+    renderTeam()
+    await screen.findByRole('table', { name: 'Team members' })
+
+    expect(headers()).toEqual([
+      'Name',
+      'Role',
+      'Start date',
+      'Allocation %',
+      'Developer capacity %',
+      'Cost/h',
+      'Price/h',
+      'Margin/h',
+      'Margin %',
+      'Planned hours',
+      'Planned margin',
+      'Actions',
+    ])
+    expect(roster().getByText('02 Nov 2026')).toBeInTheDocument()
+    expect(roster().getByText('Project start')).toBeInTheDocument()
+  })
+
+  it('hides and shows financial columns, and remembers the choice', async () => {
+    const user = userEvent.setup()
+    store().addMember(ada)
+    renderTeam()
+    await screen.findByRole('table', { name: 'Team members' })
+
+    await user.click(screen.getByRole('button', { name: 'Hide financials' }))
+    expect(headers()).toEqual([
+      'Name',
+      'Role',
+      'Start date',
+      'Allocation %',
+      'Developer capacity %',
+      'Planned hours',
+      'Actions',
+    ])
+    expect(JSON.parse(localStorage.getItem('pm-console-ui') ?? '{}').state).toEqual({ showFinancials: false })
+
+    await user.click(screen.getByRole('button', { name: 'Show financials' }))
+    expect(headers()).toContain('Planned margin')
+  })
+
+  it('sets and clears a start date in the member dialog', async () => {
+    const user = userEvent.setup()
+    seedPhase()
+    const id = store().addMember({ ...ada, startDate: '2026-10-26' })
+    renderTeam()
+    await user.click(await screen.findByRole('button', { name: 'Edit Ada Lovelace' }))
+    const dialog = within(screen.getByRole('dialog'))
+    expect(dialog.getByRole('button', { name: 'Start date' })).toHaveTextContent('26 Oct 2026')
+
+    await user.click(dialog.getByRole('button', { name: 'Clear start date' }))
+    expect(dialog.getByRole('button', { name: 'Start date' })).toHaveTextContent('From project start')
+    await user.click(dialog.getByRole('button', { name: 'Save' }))
+    expect(store().members.find((m) => m.id === id)?.startDate).toBeUndefined()
+  })
+
+  it('a start date lowers planned hours and totals', async () => {
+    seedPhase() // weeks of 19 Oct and 26 Oct
+    store().addMember({ ...ada, startDate: '2026-10-26' })
+    renderTeam()
+    await screen.findByRole('table', { name: 'Team members' })
+    // 1 of 2 weeks × 40 h
+    expect(totals().getByText('40')).toBeInTheDocument()
+  })
+})
+
+it('icon buttons inside a form do not submit it', async () => {
+  const user = userEvent.setup()
+  renderTeam()
+  await user.click(await screen.findByRole('button', { name: 'Add team member' }))
+  const dialog = within(screen.getByRole('dialog'))
+  await user.click(dialog.getByRole('button', { name: 'About developer capacity' }))
+  await user.click(dialog.getByRole('button', { name: 'How Margin/h is calculated' }))
+  // Still open, no validation errors from an accidental submit.
+  expect(screen.getByRole('dialog')).toBeInTheDocument()
+  expect(dialog.queryByText('Enter a first name')).not.toBeInTheDocument()
+})

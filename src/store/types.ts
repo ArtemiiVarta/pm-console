@@ -48,6 +48,8 @@ export interface TeamMember {
   weeklyOverrides: Record<ISODate, number>
   /** 0–100, share of assigned hours counted as development capacity. */
   capacityPct: number
+  /** First day on the project. Weeks that end before it count as 0%. Absent = from project start. */
+  startDate?: ISODate
   /** Per hour, in the project currency. */
   costRate: number
   /** Per hour, in the project currency. */

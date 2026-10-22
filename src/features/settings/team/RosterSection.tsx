@@ -1,9 +1,11 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import {
   ArrowDown,
   ArrowUp,
   ArrowUpDown,
   Copy,
+  Eye,
+  EyeOff,
   Pencil,
   Trash2,
   TrendingDown,
@@ -31,7 +33,7 @@ import {
 } from '@/components/ui/table'
 import { MemberDialog, type MemberDialogMode } from '@/features/settings/team/MemberDialog'
 import { getMarginPct } from '@/lib/forecast'
-import { formatCurrency, formatNumber, formatPercent } from '@/lib/format'
+import { formatCurrency, formatDate, formatNumber, formatPercent } from '@/lib/format'
 import {
   getInitials,
   getRoles,
@@ -45,6 +47,7 @@ import { getForecastSummary } from '@/lib/summary'
 import { cn } from '@/lib/utils'
 import { useForecastSource } from '@/features/settings/team/forecastSource'
 import { useAppStore } from '@/store/useAppStore'
+import { useUiPrefs } from '@/store/useUiPrefs'
 import type { Currency } from '@/store/types'
 
 const ALL_ROLES = '__all__'
@@ -53,26 +56,97 @@ interface Column {
   key: RosterSortKey
   label: string
   numeric?: boolean
+  /** Hidden when financials are collapsed. */
+  financial?: boolean
+  cell: (row: RosterRow, currency: Currency) => ReactNode
+  /** Totals row content (active members of the visible rows). */
+  total?: (totals: RosterTotals, currency: Currency) => ReactNode
+}
+
+interface RosterTotals {
+  hours: number
+  margin: number
+  revenue: number
 }
 
 const COLUMNS: Column[] = [
-  { key: 'name', label: 'Name' },
-  { key: 'role', label: 'Role' },
-  { key: 'defaultLoadPct', label: 'Default load %', numeric: true },
-  { key: 'weeklyHours', label: 'Weekly hours', numeric: true },
-  { key: 'capacityPct', label: 'Capacity %', numeric: true },
-  { key: 'costRate', label: 'Cost/h', numeric: true },
-  { key: 'priceRate', label: 'Price/h', numeric: true },
-  { key: 'marginPerHour', label: 'Margin/h', numeric: true },
-  { key: 'marginPct', label: 'Margin %', numeric: true },
-  { key: 'totalHours', label: 'Total hours', numeric: true },
-  { key: 'totalMargin', label: 'Total margin', numeric: true },
+  { key: 'name', label: 'Name', cell: (row) => <NameCell row={row} /> },
+  { key: 'role', label: 'Role', cell: (row) => <span className="whitespace-nowrap">{row.member.role}</span> },
+  {
+    key: 'startDate',
+    label: 'Start date',
+    cell: (row) =>
+      row.member.startDate ? (
+        <span className="whitespace-nowrap tabular-nums">{formatDate(row.member.startDate)}</span>
+      ) : (
+        <span className="whitespace-nowrap text-muted">Project start</span>
+      ),
+  },
+  {
+    key: 'defaultLoadPct',
+    label: 'Allocation %',
+    numeric: true,
+    cell: (row) => `${formatNumber(row.member.defaultLoadPct)}%`,
+  },
+  {
+    key: 'capacityPct',
+    label: 'Developer capacity %',
+    numeric: true,
+    cell: (row) => `${formatNumber(row.member.capacityPct)}%`,
+  },
+  {
+    key: 'costRate',
+    label: 'Cost/h',
+    numeric: true,
+    financial: true,
+    cell: (row, currency) => formatCurrency(row.member.costRate, currency, 2),
+  },
+  {
+    key: 'priceRate',
+    label: 'Price/h',
+    numeric: true,
+    financial: true,
+    cell: (row, currency) => formatCurrency(row.member.priceRate, currency, 2),
+  },
+  {
+    key: 'marginPerHour',
+    label: 'Margin/h',
+    numeric: true,
+    financial: true,
+    cell: (row, currency) => <Money value={row.marginPerHour} currency={currency} />,
+  },
+  {
+    key: 'marginPct',
+    label: 'Margin %',
+    numeric: true,
+    financial: true,
+    cell: (row) => <Pct value={row.marginPct} />,
+    total: (totals) => <Pct value={getMarginPct(totals.margin, totals.revenue)} />,
+  },
+  {
+    key: 'totalHours',
+    label: 'Planned hours',
+    numeric: true,
+    cell: (row) => formatNumber(row.totals.hours, 1),
+    total: (totals) => formatNumber(totals.hours, 1),
+  },
+  {
+    key: 'totalMargin',
+    label: 'Planned margin',
+    numeric: true,
+    financial: true,
+    cell: (row, currency) => <Money value={row.totals.margin} currency={currency} />,
+    total: (totals, currency) => <Money value={totals.margin} currency={currency} />,
+  },
 ]
 
 const headClass = 'text-xs font-medium uppercase tracking-wide text-muted'
 
 export function RosterSection() {
   const { project, phases, members, readOnly } = useForecastSource()
+  const showFinancials = useUiPrefs((state) => state.showFinancials)
+  const setShowFinancials = useUiPrefs((state) => state.setShowFinancials)
+  const columns = showFinancials ? COLUMNS : COLUMNS.filter((column) => !column.financial)
 
   const [dialog, setDialog] = useState<MemberDialogMode | null>(null)
   const [sort, setSort] = useState<{ key: RosterSortKey; direction: SortDirection }>({
@@ -151,12 +225,27 @@ export function RosterSection() {
             <span className="text-xs text-muted">
               Showing {visible.length} of {members.length}
             </span>
+            <ActionButton
+              size="sm"
+              variant="outline"
+              icon={showFinancials ? EyeOff : Eye}
+              tooltip={
+                showFinancials
+                  ? 'Hide cost, price and margin (also under the allocation grid)'
+                  : 'Show cost, price and margin (also under the allocation grid)'
+              }
+              aria-pressed={showFinancials}
+              onClick={() => setShowFinancials(!showFinancials)}
+              className="ml-auto"
+            >
+              {showFinancials ? 'Hide financials' : 'Show financials'}
+            </ActionButton>
           </div>
 
           <Table aria-label="Team members" containerClassName="max-h-[60vh] rounded-lg border">
             <TableHeader className="sticky top-0 z-10 bg-surface">
               <TableRow className="hover:bg-transparent">
-                {COLUMNS.map((column) => (
+                {columns.map((column) => (
                   <SortableHead
                     key={column.key}
                     column={column}
@@ -172,6 +261,7 @@ export function RosterSection() {
                 <MemberRow
                   key={row.member.id}
                   row={row}
+                  columns={columns}
                   currency={project.currency}
                   readOnly={readOnly}
                   onDialog={setDialog}
@@ -180,6 +270,7 @@ export function RosterSection() {
             </TableBody>
             <TotalsFooter
               rows={visible}
+              columns={columns}
               currency={project.currency}
               filtered={activeFilter !== ALL_ROLES}
               readOnly={readOnly}
@@ -244,13 +335,40 @@ function Pct({ value }: { value: number }) {
   )
 }
 
+function NameCell({ row }: { row: RosterRow }) {
+  const { member, fullName } = row
+  return (
+    <div className={cn('flex items-center gap-3', !member.active && 'opacity-60')}>
+      <span
+        aria-hidden
+        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary"
+      >
+        {getInitials(member)}
+      </span>
+      <div className="min-w-0">
+        <div className="flex items-center gap-2">
+          <span className="truncate font-medium">{fullName}</span>
+          {!member.active && (
+            <Badge variant="outline" className="font-normal text-muted">
+              Inactive
+            </Badge>
+          )}
+        </div>
+        <span className="block truncate text-xs text-muted">{member.email}</span>
+      </div>
+    </div>
+  )
+}
+
 function MemberRow({
   row,
+  columns,
   currency,
   readOnly,
   onDialog,
 }: {
   row: RosterRow
+  columns: Column[]
   currency: Currency
   readOnly: boolean
   onDialog: (mode: MemberDialogMode) => void
@@ -265,43 +383,14 @@ function MemberRow({
       className={cn('hover:bg-subtle/50', !member.active && 'text-muted')}
       data-testid={`member-row-${member.id}`}
     >
-      <TableCell className="min-w-56">
-        <div className={cn('flex items-center gap-3', !member.active && 'opacity-60')}>
-          <span
-            aria-hidden
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary"
-          >
-            {getInitials(member)}
-          </span>
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <span className="truncate font-medium">{fullName}</span>
-              {!member.active && (
-                <Badge variant="outline" className="font-normal text-muted">
-                  Inactive
-                </Badge>
-              )}
-            </div>
-            <span className="block truncate text-xs text-muted">{member.email}</span>
-          </div>
-        </div>
-      </TableCell>
-      <TableCell className="whitespace-nowrap">{member.role}</TableCell>
-      <TableCell className={num}>{formatNumber(member.defaultLoadPct)}%</TableCell>
-      <TableCell className={num}>{formatNumber(row.weeklyHours, 1)}</TableCell>
-      <TableCell className={num}>{formatNumber(member.capacityPct)}%</TableCell>
-      <TableCell className={num}>{formatCurrency(member.costRate, currency, 2)}</TableCell>
-      <TableCell className={num}>{formatCurrency(member.priceRate, currency, 2)}</TableCell>
-      <TableCell className={num}>
-        <Money value={row.marginPerHour} currency={currency} />
-      </TableCell>
-      <TableCell className={num}>
-        <Pct value={row.marginPct} />
-      </TableCell>
-      <TableCell className={num}>{formatNumber(row.totals.hours, 1)}</TableCell>
-      <TableCell className={num}>
-        <Money value={row.totals.margin} currency={currency} />
-      </TableCell>
+      {columns.map((column) => (
+        <TableCell
+          key={column.key}
+          className={cn(column.numeric && num, column.key === 'name' && 'min-w-56')}
+        >
+          {column.cell(row, currency)}
+        </TableCell>
+      ))}
       {!readOnly && (
         <TableCell>
           <div className="flex items-center justify-end gap-0.5">
@@ -314,7 +403,7 @@ function MemberRow({
             <IconButton
               icon={Copy}
               label={`Duplicate ${fullName}`}
-              tooltip="Add a new person with the same role, load and rates"
+              tooltip="Add a new person with the same role, allocation and rates"
               onClick={() => onDialog({ kind: 'duplicate', member })}
             />
             <IconButton
@@ -332,7 +421,7 @@ function MemberRow({
             />
             <ConfirmDialog
               title={`Delete ${fullName}?`}
-              description="Their rates and weekly assignments will be removed from the forecast. Saved baselines keep their copy. This cannot be undone."
+              description="Their rates and planned allocation will be removed from the forecast. Saved baselines keep their copy. This cannot be undone."
               onConfirm={() => {
                 deleteMember(member.id)
                 toast.success(`${fullName} deleted`)
@@ -350,37 +439,41 @@ function MemberRow({
 
 function TotalsFooter({
   rows,
+  columns,
   currency,
   filtered,
   readOnly,
 }: {
   rows: RosterRow[]
+  columns: Column[]
   currency: Currency
   filtered: boolean
   readOnly: boolean
 }) {
   const active = rows.filter((row) => row.member.active)
-  const hours = active.reduce((sum, row) => sum + row.totals.hours, 0)
-  const margin = active.reduce((sum, row) => sum + row.totals.margin, 0)
-  const revenue = active.reduce((sum, row) => sum + row.totals.revenue, 0)
-  const weekly = active.reduce((sum, row) => sum + row.weeklyHours, 0)
-  const num = 'text-right tabular-nums'
+  const totals: RosterTotals = {
+    hours: active.reduce((sum, row) => sum + row.totals.hours, 0),
+    margin: active.reduce((sum, row) => sum + row.totals.margin, 0),
+    revenue: active.reduce((sum, row) => sum + row.totals.revenue, 0),
+  }
+  // The label spans the leading columns that have no total.
+  const labelSpan = Math.max(
+    1,
+    columns.findIndex((column) => column.total),
+  )
+  const rest = columns.slice(labelSpan)
 
   return (
     <TableFooter className="sticky bottom-0 bg-subtle">
       <TableRow className="hover:bg-transparent">
-        <TableCell colSpan={3}>
+        <TableCell colSpan={labelSpan}>
           Totals{filtered ? ' (filtered)' : ''} · {active.length} active
         </TableCell>
-        <TableCell className={num}>{formatNumber(weekly, 1)}</TableCell>
-        <TableCell colSpan={4} />
-        <TableCell className={num}>
-          <Pct value={getMarginPct(margin, revenue)} />
-        </TableCell>
-        <TableCell className={num}>{formatNumber(hours, 1)}</TableCell>
-        <TableCell className={num}>
-          <Money value={margin} currency={currency} />
-        </TableCell>
+        {rest.map((column) => (
+          <TableCell key={column.key} className={cn(column.numeric && 'text-right tabular-nums')}>
+            {column.total?.(totals, currency)}
+          </TableCell>
+        ))}
         {!readOnly && <TableCell />}
       </TableRow>
     </TableFooter>

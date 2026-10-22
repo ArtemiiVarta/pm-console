@@ -94,7 +94,7 @@ describe('Forecast baselines', () => {
     expect(screen.queryByRole('button', { name: 'Add team member' })).not.toBeInTheDocument()
 
     // Typing in the grid does not edit a baseline.
-    const grid = within(screen.getByRole('grid', { name: 'Weekly assignment' }))
+    const grid = within(screen.getByRole('grid', { name: 'Planned allocation' }))
     const cell = grid.getAllByRole('gridcell')[0]
     if (!cell) throw new Error('no cell')
     await user.click(cell)

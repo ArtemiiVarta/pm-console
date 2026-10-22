@@ -15,9 +15,13 @@ export interface IconButtonProps extends Omit<ButtonProps, 'children' | 'size' |
 
 /** Icon-only button. Always has an aria-label and a tooltip (CLAUDE.md). */
 export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(
-  ({ icon: Icon, label, tooltip, shortcut, variant = 'ghost', size = 'icon', ...props }, ref) => (
+  (
+    { icon: Icon, label, tooltip, shortcut, variant = 'ghost', size = 'icon', type = 'button', ...props },
+    ref,
+  ) => (
     <ButtonTooltip tooltip={tooltip} shortcut={shortcut}>
-      <Button ref={ref} variant={variant} size={size} aria-label={label} {...props}>
+      {/* type="button" by default: an icon button inside a form must never submit it. */}
+      <Button ref={ref} type={type} variant={variant} size={size} aria-label={label} {...props}>
         <Icon className="h-4 w-4" aria-hidden />
       </Button>
     </ButtonTooltip>

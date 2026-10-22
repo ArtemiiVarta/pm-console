@@ -3,6 +3,7 @@ import { Download, Upload } from 'lucide-react'
 import { toast } from 'sonner'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { IconButton } from '@/components/IconButton'
+import { usePendingAllocation } from '@/features/settings/team/assignment/usePendingAllocation'
 import { createBackup, getBackupFileName, type Backup } from '@/lib/backupFile'
 import { formatTimestamp } from '@/lib/format'
 import { STORE_VERSION, useAppStore } from '@/store/useAppStore'
@@ -72,12 +73,14 @@ export function DataBackupButtons() {
         open={pending !== null}
         onOpenChange={(open) => !open && setPending(null)}
         title="Replace all data with this backup?"
-        description={`${summary} Everything currently in this browser — project, phases, team, weekly assignments and baselines — will be overwritten. Export first if you want to keep it.`}
+        description={`${summary} Everything currently in this browser — project, phases, team, planned allocation and baselines — will be overwritten. Export first if you want to keep it.`}
         confirmLabel="Replace all data"
         confirmIcon={Upload}
         onConfirm={() => {
           if (!pending) return
           replaceData(pending.backup.data)
+          // Unsaved grid edits belonged to the data that was just replaced.
+          usePendingAllocation.getState().discard()
           toast.success('Backup restored')
         }}
       />

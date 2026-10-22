@@ -8,6 +8,7 @@ import { IconButton } from '@/components/IconButton'
 import { Badge } from '@/components/ui/badge'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { usePendingAllocation } from '@/features/settings/team/assignment/usePendingAllocation'
 import { CompareView } from '@/features/settings/team/baselines/CompareView'
 import { sortBaselinesNewestFirst } from '@/lib/baseline'
 import { formatCurrency, formatNumber, formatPercent, formatTimestamp } from '@/lib/format'
@@ -181,6 +182,8 @@ function BaselineItem({
             confirmIcon={RotateCcw}
             onConfirm={() => {
               restoreBaseline(baseline.id)
+              // Unsaved grid edits belonged to the data that was just replaced.
+              usePendingAllocation.getState().discard()
               onView(null)
               toast.success(`Working forecast restored from “${baseline.name}”`)
             }}

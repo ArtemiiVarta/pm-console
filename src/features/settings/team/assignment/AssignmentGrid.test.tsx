@@ -2,6 +2,7 @@ import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { App } from '@/app/App'
 import { useAuth } from '@/features/auth/useAuth'
+import { useUiPrefs } from '@/store/useUiPrefs'
 import { createInitialData, useAppStore, type NewTeamMember } from '@/store/useAppStore'
 
 const store = () => useAppStore.getState()
@@ -27,10 +28,11 @@ function seed() {
 async function renderGrid() {
   window.location.hash = '#/settings/team'
   render(<App />)
-  return within(await screen.findByRole('grid', { name: 'Weekly assignment' }))
+  return within(await screen.findByRole('grid', { name: 'Planned allocation' }))
 }
 
 type Grid = ReturnType<typeof within>
+type User = ReturnType<typeof userEvent.setup>
 
 const cell = (grid: Grid, row: number, col: number): HTMLElement => {
   const el = grid
@@ -43,32 +45,35 @@ const cell = (grid: Grid, row: number, col: number): HTMLElement => {
 const footerValue = (grid: Grid, label: string, col: number) =>
   grid.getByRole('rowheader', { name: label }).parentElement?.children[col + 1]?.textContent
 
+const save = (user: User) => user.click(screen.getByRole('button', { name: 'Save changes' }))
+
 beforeEach(() => {
   localStorage.clear()
   useAppStore.setState(createInitialData())
   useAuth.getState().signIn()
 })
 
-describe('Weekly assignment grid', () => {
+describe('Planned allocation grid', () => {
   it('shows empty states without weeks or active members', async () => {
     window.location.hash = '#/settings/team'
     render(<App />)
     expect(await screen.findByText('No project weeks yet')).toBeInTheDocument()
   })
 
-  it('renders week columns, phase bands and default loads', async () => {
+  it('renders week columns, phase bands and allocations', async () => {
     seed()
     const grid = await renderGrid()
     expect(grid.getByRole('columnheader', { name: '19 Oct' })).toBeInTheDocument()
-    expect(grid.getByRole('columnheader', { name: '02 Nov' })).toBeInTheDocument()
+    expect(grid.getByRole('columnheader', { name: 'Allocation' })).toBeInTheDocument()
     expect(grid.getByText('Explore')).toBeInTheDocument()
     expect(grid.getByText('Realize')).toBeInTheDocument()
     expect(cell(grid, 0, 0)).toHaveTextContent('100%')
-    expect(cell(grid, 0, 0)).toHaveAccessibleName(/default load/)
-    expect(footerValue(grid, 'Total hours', 0)).toBe('80')
+    expect(cell(grid, 0, 0)).toHaveAccessibleName(/allocation$/)
+    expect(footerValue(grid, 'Planned hours', 0)).toBe('80')
+    expect(screen.getByText('All changes saved')).toBeInTheDocument()
   })
 
-  it('an override changes the cell, row total and weekly totals', async () => {
+  it('keeps an edit pending, previewed in the grid, until Save changes', async () => {
     const user = userEvent.setup()
     const { a } = seed()
     const grid = await renderGrid()
@@ -76,17 +81,55 @@ describe('Weekly assignment grid', () => {
     await user.click(cell(grid, 0, 1))
     await user.keyboard('50{Enter}')
 
-    expect(store().members.find((m) => m.id === a)?.weeklyOverrides).toEqual({ '2026-10-26': 50 })
+    // Not saved yet: the store is unchanged, the grid previews the edit.
+    expect(store().members.find((m) => m.id === a)?.weeklyOverrides).toEqual({})
     expect(cell(grid, 0, 1)).toHaveTextContent('50%')
-    expect(cell(grid, 0, 1)).toHaveAccessibleName(/weekly override/)
-    // Ada: 40 + 20 + 40
-    expect(
-      grid.getByRole('rowheader', { name: /Ada Lovelace/ }).parentElement?.lastElementChild,
-    ).toHaveTextContent('100')
-    expect(footerValue(grid, 'Total hours', 1)).toBe('60')
+    expect(cell(grid, 0, 1)).toHaveAccessibleName(/weekly override, unsaved$/)
+    expect(footerValue(grid, 'Planned hours', 1)).toBe('60')
     expect(footerValue(grid, 'Cost', 1)).toBe('$6,000')
+    expect(screen.getByText('1 unsaved change')).toBeInTheDocument()
     // Enter moved focus to the next week
     expect(cell(grid, 0, 2)).toHaveFocus()
+
+    await save(user)
+    expect(store().members.find((m) => m.id === a)?.weeklyOverrides).toEqual({ '2026-10-26': 50 })
+    expect(cell(grid, 0, 1)).toHaveAccessibleName(/weekly override$/)
+    expect(screen.getByText('All changes saved')).toBeInTheDocument()
+  })
+
+  it('Discard throws pending edits away', async () => {
+    const user = userEvent.setup()
+    seed()
+    const grid = await renderGrid()
+    await user.click(cell(grid, 0, 0))
+    await user.keyboard('20{Enter}30{Enter}')
+    expect(screen.getByText('2 unsaved changes')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Discard' }))
+    expect(cell(grid, 0, 0)).toHaveTextContent('100%')
+    expect(store().members[0]?.weeklyOverrides).toEqual({})
+  })
+
+  it('saves with Ctrl+S', async () => {
+    const user = userEvent.setup()
+    seed()
+    const grid = await renderGrid()
+    await user.click(cell(grid, 1, 0))
+    await user.keyboard('70{Enter}{Control>}s{/Control}')
+    expect(store().members[1]?.weeklyOverrides).toEqual({ '2026-10-19': 70 })
+  })
+
+  it('editing a cell back to its saved value leaves nothing pending', async () => {
+    const user = userEvent.setup()
+    const { a } = seed()
+    store().setWeeklyOverride(a, '2026-10-19', 40)
+    const grid = await renderGrid()
+    await user.click(cell(grid, 0, 0))
+    await user.keyboard('90{Enter}')
+    expect(screen.getByText('1 unsaved change')).toBeInTheDocument()
+    await user.click(cell(grid, 0, 0))
+    await user.keyboard('40{Enter}')
+    expect(screen.getByText('All changes saved')).toBeInTheDocument()
   })
 
   it('flags overallocation above 100%', async () => {
@@ -98,7 +141,7 @@ describe('Weekly assignment grid', () => {
     expect(cell(grid, 1, 0)).toHaveAccessibleName(/overallocated/)
   })
 
-  it('emptying a cell resets it to the default', async () => {
+  it('emptying a cell resets it to the allocation on save', async () => {
     const user = userEvent.setup()
     const { a } = seed()
     store().setWeeklyOverride(a, '2026-10-19', 30)
@@ -106,8 +149,9 @@ describe('Weekly assignment grid', () => {
 
     await user.click(cell(grid, 0, 0))
     await user.keyboard('{Enter}{Control>}a{/Control}{Backspace}{Enter}')
-    expect(store().members[0]?.weeklyOverrides).toEqual({})
     expect(cell(grid, 0, 0)).toHaveTextContent('100%')
+    await save(user)
+    expect(store().members[0]?.weeklyOverrides).toEqual({})
   })
 
   it('Escape cancels an edit', async () => {
@@ -119,7 +163,7 @@ describe('Weekly assignment grid', () => {
     expect(grid.getByRole('textbox')).toHaveValue('7')
     await user.keyboard('{Escape}')
     expect(grid.queryByRole('textbox')).not.toBeInTheDocument()
-    expect(store().members[0]?.weeklyOverrides).toEqual({})
+    expect(screen.getByText('All changes saved')).toBeInTheDocument()
     expect(cell(grid, 0, 0)).toHaveFocus()
   })
 
@@ -132,8 +176,9 @@ describe('Weekly assignment grid', () => {
 
     await user.click(cell(grid, 0, 2))
     await user.keyboard('30{Tab}')
-    expect(store().members[0]?.weeklyOverrides).toEqual({ '2026-11-02': 75 })
     expect(cell(grid, 0, 2)).toHaveTextContent('30')
+    await save(user)
+    expect(store().members[0]?.weeklyOverrides).toEqual({ '2026-11-02': 75 })
   })
 
   it('moves with arrow keys and selects a range with Shift', async () => {
@@ -150,7 +195,7 @@ describe('Weekly assignment grid', () => {
     expect(screen.getByRole('toolbar', { name: 'Selected cells' })).toHaveTextContent('2 cells selected')
   })
 
-  it('resets a selected range to default and fills right', async () => {
+  it('resets a selected range and fills right (as pending changes)', async () => {
     const user = userEvent.setup()
     const { a, b } = seed()
     store().setWeeklyOverrides([
@@ -167,10 +212,12 @@ describe('Weekly assignment grid', () => {
     expect(toolbar.getByText('6 cells selected')).toBeInTheDocument()
 
     await user.click(toolbar.getByRole('button', { name: 'Fill right' }))
+    await save(user)
     expect(store().members[0]?.weeklyOverrides).toMatchObject({ '2026-10-26': 20, '2026-11-02': 20 })
     expect(store().members[1]?.weeklyOverrides).toMatchObject({ '2026-10-26': 60, '2026-11-02': 60 })
 
     await user.click(toolbar.getByRole('button', { name: 'Reset to default' }))
+    await save(user)
     expect(store().members[0]?.weeklyOverrides).toEqual({})
     expect(store().members[1]?.weeklyOverrides).toEqual({})
   })
@@ -186,11 +233,38 @@ describe('Weekly assignment grid', () => {
     await user.clear(pct)
     await user.type(pct, '40')
     await user.click(dialog.getByRole('button', { name: 'Apply' }))
+    expect(screen.getByText('3 unsaved changes')).toBeInTheDocument()
+    await save(user)
     expect(store().members[1]?.weeklyOverrides).toEqual({
       '2026-10-19': 40,
       '2026-10-26': 40,
       '2026-11-02': 40,
     })
+  })
+
+  it('shows weeks before a start date as locked 0%', async () => {
+    const user = userEvent.setup()
+    const { a } = seed()
+    store().updateMember(a, { startDate: '2026-10-28' })
+    const grid = await renderGrid()
+
+    expect(cell(grid, 0, 0)).toHaveTextContent('—')
+    expect(cell(grid, 0, 0)).toHaveAccessibleName(/0%, 0 h, .*before start date/)
+    expect(cell(grid, 0, 1)).toHaveTextContent('100%') // week of 26 Oct contains the start date
+    expect(footerValue(grid, 'Planned hours', 0)).toBe('40') // only Bob
+
+    await user.click(cell(grid, 0, 0))
+    await user.keyboard('5')
+    expect(grid.queryByRole('textbox')).not.toBeInTheDocument()
+  })
+
+  it('hides the Cost and Revenue rows when financials are hidden', async () => {
+    seed()
+    useUiPrefs.setState({ showFinancials: false })
+    const grid = await renderGrid()
+    expect(grid.getByRole('rowheader', { name: 'Developer capacity' })).toBeInTheDocument()
+    expect(grid.queryByRole('rowheader', { name: 'Cost' })).not.toBeInTheDocument()
+    expect(grid.queryByRole('rowheader', { name: 'Revenue' })).not.toBeInTheDocument()
   })
 
   it('renders 25 members × 78 weeks', async () => {

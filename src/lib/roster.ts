@@ -15,6 +15,7 @@ export interface RosterRow {
 export type RosterSortKey =
   | 'name'
   | 'role'
+  | 'startDate'
   | 'defaultLoadPct'
   | 'weeklyHours'
   | 'capacityPct'
@@ -61,6 +62,8 @@ export function getRosterRows(
 const sortValue: Record<RosterSortKey, (row: RosterRow) => string | number> = {
   name: (row) => row.fullName.toLowerCase(),
   role: (row) => row.member.role.toLowerCase(),
+  // No start date = from project start, so it sorts first.
+  startDate: (row) => row.member.startDate ?? '',
   defaultLoadPct: (row) => row.member.defaultLoadPct,
   weeklyHours: (row) => row.weeklyHours,
   capacityPct: (row) => row.member.capacityPct,

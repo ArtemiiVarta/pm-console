@@ -34,6 +34,7 @@ const memberSchema = z.object({
   defaultLoadPct: z.number().min(0).max(200),
   weeklyOverrides: z.record(isoDate, z.number().min(0).max(200)),
   capacityPct: z.number().min(0).max(100),
+  startDate: isoDate.optional(),
   costRate: z.number().min(0),
   priceRate: z.number().min(0),
   active: z.boolean(),

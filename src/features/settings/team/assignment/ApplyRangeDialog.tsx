@@ -1,6 +1,5 @@
 import { useState, type FormEvent } from 'react'
 import { Check, X } from 'lucide-react'
-import { toast } from 'sonner'
 import { ActionButton } from '@/components/ActionButton'
 import { FormField } from '@/components/FormField'
 import {
@@ -17,16 +16,17 @@ import { MAX_LOAD_PCT } from '@/lib/assignment'
 import { fieldAria } from '@/lib/fieldAria'
 import { formatDate } from '@/lib/format'
 import { getFullName } from '@/lib/roster'
-import { useAppStore } from '@/store/useAppStore'
 import type { ISODate, TeamMember } from '@/store/types'
 
 interface ApplyRangeDialogProps {
   member: TeamMember | null
   weeks: ISODate[]
+  /** Called with the chosen weeks (inclusive, either order) and load %. */
+  onApply: (member: TeamMember, fromWeek: ISODate, toWeek: ISODate, pct: number) => void
   onClose: () => void
 }
 
-export function ApplyRangeDialog({ member, weeks, onClose }: ApplyRangeDialogProps) {
+export function ApplyRangeDialog({ member, weeks, onApply, onClose }: ApplyRangeDialogProps) {
   // Keep the last member while the dialog animates closed.
   const [shown, setShown] = useState(member)
   if (member && member !== shown) setShown(member)
@@ -42,7 +42,9 @@ export function ApplyRangeDialog({ member, weeks, onClose }: ApplyRangeDialogPro
               : ''}
           </DialogDescription>
         </DialogHeader>
-        {shown && <ApplyRangeForm key={shown.id} member={shown} weeks={weeks} onDone={onClose} />}
+        {shown && (
+          <ApplyRangeForm key={shown.id} member={shown} weeks={weeks} onApply={onApply} onDone={onClose} />
+        )}
       </DialogContent>
     </Dialog>
   )
@@ -51,13 +53,14 @@ export function ApplyRangeDialog({ member, weeks, onClose }: ApplyRangeDialogPro
 function ApplyRangeForm({
   member,
   weeks,
+  onApply,
   onDone,
 }: {
   member: TeamMember
   weeks: ISODate[]
+  onApply: ApplyRangeDialogProps['onApply']
   onDone: () => void
 }) {
-  const applyLoadToRange = useAppStore((state) => state.applyLoadToRange)
   const [from, setFrom] = useState(weeks[0] ?? '')
   const [to, setTo] = useState(weeks.at(-1) ?? '')
   const [pct, setPct] = useState(String(member.defaultLoadPct))
@@ -70,8 +73,7 @@ function ApplyRangeForm({
       setError(`Enter a load between 0 and ${MAX_LOAD_PCT}%`)
       return
     }
-    applyLoadToRange(member.id, from, to, value)
-    toast.success(`${getFullName(member)}: ${value}% applied`)
+    onApply(member, from, to, value)
     onDone()
   }
 
@@ -101,7 +103,7 @@ function ApplyRangeForm({
       <FormField
         id="range-pct"
         label="Load %"
-        helper="0–200%. Weeks outside the range keep their values."
+        helper="0–200%. Weeks outside the range keep their values. Save changes to apply."
         error={error ?? undefined}
       >
         <Input

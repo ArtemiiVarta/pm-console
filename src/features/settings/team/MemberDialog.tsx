@@ -1,10 +1,11 @@
 import { useId, useMemo, useState, type ReactNode } from 'react'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Info, Save, UserPlus, X } from 'lucide-react'
-import { useForm, useWatch } from 'react-hook-form'
+import { Controller, useForm, useWatch } from 'react-hook-form'
 import { toast } from 'sonner'
 import { ActionButton } from '@/components/ActionButton'
 import { CalculatedField } from '@/components/CalculatedField'
+import { DatePicker } from '@/components/DatePicker'
 import { FormField } from '@/components/FormField'
 import { IconButton } from '@/components/IconButton'
 import {
@@ -20,6 +21,7 @@ import {
   emptyMemberValues,
   makeMemberSchema,
   ROLE_SUGGESTIONS,
+  toMemberData,
   toMemberValues,
   type MemberValues,
 } from '@/features/settings/team/memberSchema'
@@ -27,6 +29,7 @@ import { fieldAria } from '@/lib/fieldAria'
 import { getRateMargin } from '@/lib/forecast'
 import { formatCurrency, formatNumber, formatPercent } from '@/lib/format'
 import { getFullName } from '@/lib/roster'
+import { getProjectRange } from '@/lib/schedule'
 import { useAppStore } from '@/store/useAppStore'
 import type { TeamMember } from '@/store/types'
 
@@ -56,8 +59,8 @@ export function MemberDialog({ mode, onClose }: MemberDialogProps) {
               <DialogTitle>{TITLES[shown.kind]}</DialogTitle>
               <DialogDescription>
                 {shown.kind === 'duplicate'
-                  ? `A copy of ${getFullName(shown.member)}, with the same role, load, rates and weekly assignments. Enter a new name and email.`
-                  : 'Rates and load drive the forecast hours, cost and margin.'}
+                  ? `A copy of ${getFullName(shown.member)}, with the same role, start date, allocation, rates and planned weeks. Enter a new name and email.`
+                  : 'Allocation, start date and rates drive the planned hours, cost and margin.'}
               </DialogDescription>
             </DialogHeader>
             {/* Keyed by mode so the form resets each time it opens. */}
@@ -76,6 +79,11 @@ export function MemberDialog({ mode, onClose }: MemberDialogProps) {
 function MemberForm({ mode, onDone }: { mode: MemberDialogMode; onDone: () => void }) {
   const members = useAppStore((state) => state.members)
   const project = useAppStore((state) => state.project)
+  const phases = useAppStore((state) => state.phases)
+  const projectStart = useMemo(
+    () => getProjectRange(phases, project.durationMode)?.start ?? null,
+    [phases, project.durationMode],
+  )
   const addMember = useAppStore((state) => state.addMember)
   const updateMember = useAppStore((state) => state.updateMember)
   const rolesListId = useId()
@@ -110,12 +118,13 @@ function MemberForm({ mode, onDone }: { mode: MemberDialogMode; onDone: () => vo
 
   const onSubmit = (values: MemberValues) => {
     const name = getFullName(values)
+    const data = toMemberData(values)
     if (mode.kind === 'edit') {
-      updateMember(mode.member.id, values)
+      updateMember(mode.member.id, data)
       toast.success(`${name} saved`)
     } else {
       addMember({
-        ...values,
+        ...data,
         weeklyOverrides: mode.kind === 'duplicate' ? { ...mode.member.weeklyOverrides } : {},
       })
       toast.success(`${name} added to the forecast`)
@@ -198,15 +207,40 @@ function MemberForm({ mode, onDone }: { mode: MemberDialogMode; onDone: () => vo
             ))}
           </datalist>
         </FormField>
+        <FormField
+          id="member-start"
+          label="Start date"
+          helper="Weeks before this date count as 0%. Leave empty if they start with the project."
+          error={errors.startDate?.message}
+        >
+          <Controller
+            control={control}
+            name="startDate"
+            render={({ field }) => (
+              <DatePicker
+                id="member-start"
+                ref={field.ref}
+                value={field.value}
+                onChange={field.onChange}
+                onClear={() => field.onChange('')}
+                clearLabel="Clear start date"
+                placeholder="From project start"
+                emptyMonth={projectStart ?? undefined}
+                tooltip="Pick the first day this person works on the project"
+                {...fieldAria('member-start', errors.startDate?.message, true)}
+              />
+            )}
+          />
+        </FormField>
       </div>
 
       <div className="grid grid-cols-1 gap-4 border-t pt-4 sm:grid-cols-2">
-        {number('member-load', 'defaultLoadPct', 'Default load', {
+        {number('member-load', 'defaultLoadPct', 'Allocation', {
           helper: `100% = ${formatNumber(project.standardHoursPerWeek, 1)} h/week · now ${loadHours} h/week. 0–200%.`,
           suffix: '%',
           step: 5,
         })}
-        {number('member-capacity', 'capacityPct', 'Capacity', {
+        {number('member-capacity', 'capacityPct', 'Developer capacity', {
           helper: '0–100%.',
           suffix: '%',
           step: 5,
@@ -214,8 +248,8 @@ function MemberForm({ mode, onDone }: { mode: MemberDialogMode; onDone: () => vo
             <IconButton
               icon={Info}
               size="icon-sm"
-              label="About capacity"
-              tooltip="Share of assigned hours counted as development capacity (e.g. 80% if 20% goes to meetings/admin)"
+              label="About developer capacity"
+              tooltip="Share of allocated hours counted as developer capacity (e.g. 80% if 20% goes to meetings/admin)"
             />
           ),
         })}

@@ -13,6 +13,11 @@ export const ROLE_SUGGESTIONS = [
   'Business Analyst',
 ]
 
+export const toMemberData = ({ startDate, ...values }: MemberValues) => ({
+  ...values,
+  startDate: startDate || undefined,
+})
+
 const percent = (max: number) =>
   z.number({ error: 'Enter a percentage' }).min(0, 'Use 0 or more').max(max, `Use ${max} or less`)
 
@@ -35,6 +40,8 @@ export function makeMemberSchema(others: TeamMember[], editingId?: string) {
     role: z.string().trim().min(1, 'Enter or pick a role').max(60, 'Use 60 characters or fewer'),
     defaultLoadPct: percent(200),
     capacityPct: percent(100),
+    /** '' = from project start */
+    startDate: z.union([z.literal(''), z.iso.date('Pick a valid date')]),
     costRate: rate,
     priceRate: rate,
   })
@@ -49,11 +56,23 @@ export const emptyMemberValues: MemberValues = {
   role: '',
   defaultLoadPct: 100,
   capacityPct: 100,
+  startDate: '',
   costRate: 0,
   priceRate: 0,
 }
 
 export function toMemberValues(member: TeamMember): MemberValues {
-  const { firstName, lastName, email, role, defaultLoadPct, capacityPct, costRate, priceRate } = member
-  return { firstName, lastName, email, role, defaultLoadPct, capacityPct, costRate, priceRate }
+  const { firstName, lastName, email, role, defaultLoadPct, capacityPct, startDate, costRate, priceRate } =
+    member
+  return {
+    firstName,
+    lastName,
+    email,
+    role,
+    defaultLoadPct,
+    capacityPct,
+    startDate: startDate ?? '',
+    costRate,
+    priceRate,
+  }
 }
