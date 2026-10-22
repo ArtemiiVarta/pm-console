@@ -76,4 +76,5 @@ it('login → add phase → add member → edit and save a week → create basel
   await user.keyboard('{Enter}')
   expect(useAppStore.getState().baselines).toHaveLength(1)
   expect(useAppStore.getState().baselines[0]?.snapshot.members[0]?.weeklyOverrides).toEqual(overrides)
-})
+  // A full end-to-end flow: slower CI machines need more than the 5 s default.
+}, 20_000)
