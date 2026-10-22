@@ -116,7 +116,7 @@ function CreateBaselineForm({ onDone }: { onDone: () => void }) {
       </FormField>
 
       <section aria-label="What will be captured" className="rounded-lg border bg-subtle p-3">
-        <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-muted">What will be captured</h3>
+        <h3 className="mb-2 text-base font-medium">What will be captured</h3>
         <dl className="grid grid-cols-3 gap-x-4 gap-y-2">
           {preview.map((item) => (
             <div key={item.label}>

@@ -62,6 +62,8 @@ export interface AppActions {
   /** Replaces the working project, phases and team with a copy of the baseline's snapshot. */
   restoreBaseline: (id: string) => boolean
   selectBaseline: (id: string | null) => void
+  /** Replaces all data at once (backup import). */
+  replaceData: (data: AppData) => void
 }
 
 export interface WeeklyCell {
@@ -264,6 +266,8 @@ export const useAppStore = create<AppState>()(
         set({ project: { ...project, updatedAt: nowISO() }, phases, members })
         return true
       },
+      replaceData: ({ project, phases, members, baselines, selectedBaselineId }) =>
+        set({ project, phases, members, baselines, selectedBaselineId }),
       selectBaseline: (id) =>
         set((state) => ({
           selectedBaselineId:

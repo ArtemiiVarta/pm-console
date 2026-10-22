@@ -4,6 +4,7 @@ import * as React from 'react'
 import { ChevronDownIcon, ChevronLeftIcon, ChevronRightIcon } from 'lucide-react'
 import { DayButton, DayPicker, getDefaultClassNames } from 'react-day-picker'
 
+import { ButtonTooltip } from '@/components/ButtonTooltip'
 import { cn } from '@/lib/utils'
 import { Button, buttonVariants } from '@/components/ui/button'
 
@@ -114,6 +115,17 @@ function Calendar({
           return <ChevronDownIcon className={cn('size-4', className)} {...props} />
         },
         DayButton: CalendarDayButton,
+        // Month navigation follows the app rule: every button has a tooltip.
+        PreviousMonthButton: (props) => (
+          <ButtonTooltip tooltip="Show the previous month">
+            <button {...props} />
+          </ButtonTooltip>
+        ),
+        NextMonthButton: (props) => (
+          <ButtonTooltip tooltip="Show the next month">
+            <button {...props} />
+          </ButtonTooltip>
+        ),
         WeekNumber: ({ children, ...props }) => {
           return (
             <td {...props}>

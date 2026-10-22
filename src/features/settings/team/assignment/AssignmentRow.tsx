@@ -40,6 +40,8 @@ interface AssignmentRowProps {
   selectedRight: number
   /** Focused column in this row, or -1. */
   focusedCol: number
+  /** Column reachable with Tab in this row (the focused cell, or the first cell before any focus), or -1. */
+  tabbableCol: number
   editing: RowEditing | null
   onDraftChange: (draft: string) => void
   onEditKeyDown: (event: KeyboardEvent<HTMLInputElement>) => void
@@ -59,6 +61,7 @@ export const AssignmentRow = memo(function AssignmentRow({
   selectedLeft,
   selectedRight,
   focusedCol,
+  tabbableCol,
   editing,
   onDraftChange,
   onEditKeyDown,
@@ -88,6 +91,7 @@ export const AssignmentRow = memo(function AssignmentRow({
         isOverride={member.weeklyOverrides[week] !== undefined}
         selected={col >= selectedLeft && col <= selectedRight}
         focused={col === focusedCol}
+        tabbable={col === tabbableCol}
         unit={unit}
         draft={isEditing ? editing.draft : null}
         selectAll={isEditing ? editing.selectAll : false}
@@ -142,6 +146,7 @@ interface WeekCellProps {
   isOverride: boolean
   selected: boolean
   focused: boolean
+  tabbable: boolean
   unit: DisplayUnit
   /** The draft while this cell is being edited, otherwise null. */
   draft: string | null
@@ -163,6 +168,7 @@ const WeekCell = memo(function WeekCell({
   isOverride,
   selected,
   focused,
+  tabbable,
   unit,
   draft,
   selectAll,
@@ -177,7 +183,7 @@ const WeekCell = memo(function WeekCell({
       role="gridcell"
       data-row={rowIndex}
       data-col={col}
-      tabIndex={focused ? 0 : -1}
+      tabIndex={tabbable ? 0 : -1}
       aria-selected={selected}
       aria-label={`${name}, week of ${week}: ${formatNumber(pct, 1)}%, ${formatNumber(hours, 1)} h, capacity ${formatNumber(capHours, 1)} h${isOverride ? ', weekly override' : ', default load'}${over ? ', overallocated' : ''}`}
       className={cn(

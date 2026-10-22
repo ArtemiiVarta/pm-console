@@ -1,6 +1,7 @@
 import { LayoutDashboard, LogOut, Moon, Sun } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { useNavigate } from 'react-router-dom'
+import { DataBackupButtons } from '@/app/DataBackupButtons'
 import { IconButton } from '@/components/IconButton'
 import { useAuth } from '@/features/auth/useAuth'
 import { useAppStore } from '@/store/useAppStore'
@@ -28,6 +29,8 @@ export function TopBar() {
           {projectName.trim() || 'Untitled project'}
         </span>
         <div className="ml-auto flex items-center gap-1">
+          <DataBackupButtons />
+          <span className="mx-1 h-5 w-px bg-border" aria-hidden />
           <IconButton
             icon={isDark ? Sun : Moon}
             label={isDark ? 'Switch to light theme' : 'Switch to dark theme'}

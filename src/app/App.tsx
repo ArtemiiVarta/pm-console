@@ -1,14 +1,28 @@
-import { lazy, Suspense } from 'react'
+import { lazy } from 'react'
 import { HashRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AppShell } from '@/app/AppShell'
 import { AppProviders } from '@/app/providers'
 import { LoginPage } from '@/features/auth/LoginPage'
 import { RequireAuth } from '@/features/auth/RequireAuth'
-import { ForecastVsActualPage } from '@/features/forecast-vs-actual/ForecastVsActualPage'
-import { MonitoringPage } from '@/features/monitoring/MonitoringPage'
-import { PlanningPage } from '@/features/planning/PlanningPage'
-import { ReportsPage } from '@/features/reports/ReportsPage'
-import { SettingsPage } from '@/features/settings/SettingsPage'
+
+// Pages load on first visit, so the login screen and app shell ship in a small first bundle.
+const SettingsPage = lazy(() =>
+  import('@/features/settings/SettingsPage').then((m) => ({ default: m.SettingsPage })),
+)
+const PlanningPage = lazy(() =>
+  import('@/features/planning/PlanningPage').then((m) => ({ default: m.PlanningPage })),
+)
+const MonitoringPage = lazy(() =>
+  import('@/features/monitoring/MonitoringPage').then((m) => ({ default: m.MonitoringPage })),
+)
+const ForecastVsActualPage = lazy(() =>
+  import('@/features/forecast-vs-actual/ForecastVsActualPage').then((m) => ({
+    default: m.ForecastVsActualPage,
+  })),
+)
+const ReportsPage = lazy(() =>
+  import('@/features/reports/ReportsPage').then((m) => ({ default: m.ReportsPage })),
+)
 
 // Dev-only component gallery; the import is dropped from production builds.
 const ComponentsGallery = import.meta.env.DEV
@@ -35,16 +49,7 @@ export function App() {
             <Route path="monitoring" element={<MonitoringPage />} />
             <Route path="forecast-vs-actual" element={<ForecastVsActualPage />} />
             <Route path="reports" element={<ReportsPage />} />
-            {ComponentsGallery && (
-              <Route
-                path="dev/components"
-                element={
-                  <Suspense fallback={null}>
-                    <ComponentsGallery />
-                  </Suspense>
-                }
-              />
-            )}
+            {ComponentsGallery && <Route path="dev/components" element={<ComponentsGallery />} />}
             <Route path="*" element={<Navigate to="/settings" replace />} />
           </Route>
         </Routes>

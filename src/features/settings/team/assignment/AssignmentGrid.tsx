@@ -6,6 +6,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type FocusEvent,
   type KeyboardEvent,
   type MouseEvent,
   type ReactElement,
@@ -264,6 +265,15 @@ export function AssignmentGrid({
     }, 300)
   }
 
+  // Keyboard focus arriving from outside (Tab) makes that cell the current one.
+  const onCellFocus = (event: FocusEvent<HTMLTableSectionElement>) => {
+    const pos = readCell(event.target)
+    if (!pos || !(event.target as HTMLElement).matches('[data-row][data-col]')) return
+    if (focus?.row === pos.row && focus.col === pos.col) return
+    setFocus(pos)
+    setAnchor(pos)
+  }
+
   const onDoubleClick = (event: MouseEvent<HTMLTableSectionElement>) => {
     const pos = readCell(event.target)
     if (pos && !editing) startEdit(pos)
@@ -403,6 +413,7 @@ export function AssignmentGrid({
             onMouseDown={onMouseDown}
             onMouseOver={onMouseOver}
             onDoubleClick={onDoubleClick}
+            onFocus={onCellFocus}
             onMouseLeave={onMouseLeave}
           >
             {members.map((member, row) => {
@@ -422,6 +433,7 @@ export function AssignmentGrid({
                   selectedLeft={inRange ? range.left : -1}
                   selectedRight={inRange ? range.right : -1}
                   focusedCol={focus?.row === row ? focus.col : -1}
+                  tabbableCol={focus ? (focus.row === row ? focus.col : -1) : row === 0 ? 0 : -1}
                   editing={rowEditing}
                   onDraftChange={onDraftChange}
                   onEditKeyDown={onEditKeyDown}
