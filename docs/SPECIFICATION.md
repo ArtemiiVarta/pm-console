@@ -29,18 +29,19 @@ PM Console helps a project manager plan and monitor SAP-style consulting engagem
 
 ## 3. Environments
 
-|                      | Staging                               | Production                                   |
-| -------------------- | ------------------------------------- | -------------------------------------------- |
-| Purpose              | Feature testing                       | Real projects                                |
-| URL                  | `/pm-console/`                        | `/pm-console-app/`                           |
-| Updated              | Automatically on every push to `main` | Manually: **Actions › Deploy to Production** |
-| Marker               | “Staging” badge and page title        | none                                         |
-| Project data         | `staging/projects.json`               | `projects.json`                              |
-| Browser storage keys | `pm-console-*`                        | `pm-console-prod-*`                          |
+|                      | Local (development)                                                              | Staging                                        | Production                                            |
+| -------------------- | -------------------------------------------------------------------------------- | ---------------------------------------------- | ----------------------------------------------------- |
+| URL                  | http://localhost:5173/pm-console/                                                | https://artemiivarta.github.io/pm-console/     | https://artemiivarta.github.io/pm-console-app/        |
+| Purpose              | Building and testing changes on one computer                                     | Feature testing                                | Real projects                                         |
+| Runs                 | `npm run dev` — the working copy, with hot reload                                | Automatically deployed on every push to `main` | Deployed manually: **Actions › Deploy to Production** |
+| Sign-in              | Google, or **Test admin / Test user** (no Google)                                | Google                                         | Google                                                |
+| Project data         | Test sign-in: kept in that browser only. Google sign-in: `staging/projects.json` | `staging/projects.json`                        | `projects.json`                                       |
+| Marker               | “Staging” badge and page title                                                   | “Staging” badge and page title                 | none                                                  |
+| Browser storage keys | `pm-console-*` (its own origin)                                                  | `pm-console-*`                                 | `pm-console-prod-*`                                   |
 
-- Both sites share the same API, the same people list and the same Google sign-in.
+- All three use the same API, people list and Google client (its allowed origins are `https://artemiivarta.github.io` and `http://localhost:5173`).
 - Production always ships a version that already passed on Staging (by default the last successful Staging deploy; any earlier commit can be chosen to roll back).
-- `npm run dev` adds a **local test mode** (Test admin / Test user, in-browser stand-in API and data) that is never included in Staging or Production builds.
+- The local test mode (Test admin / Test user with an in-browser stand-in API) exists only in the dev server and is never included in Staging or Production builds.
 
 ## 4. Architecture
 
