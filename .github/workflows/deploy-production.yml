@@ -1,0 +1,79 @@
+name: Deploy to Production
+
+# Run by hand (Actions › Deploy to Production › Run workflow) once Staging is tested.
+# Ships the version currently on Staging, or a commit you name, to
+# https://artemiivarta.github.io/pm-console-app/ (branch gh-pages of ArtemiiVarta/pm-console-app).
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Commit to deploy. Leave empty for the version currently on Staging.
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://artemiivarta.github.io/pm-console-app/
+    steps:
+      - name: Pick the version
+        id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_REF: ${{ inputs.ref }}
+        run: |
+          if [ -n "$INPUT_REF" ]; then
+            sha="$INPUT_REF"
+          else
+            sha=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow deploy.yml --branch main \
+              --status success --limit 1 --json headSha --jq '.[0].headSha')
+          fi
+          if [ -z "$sha" ]; then
+            echo "::error::No successful Staging deploy found."
+            exit 1
+          fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "Deploying \`$sha\` to Production." >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ steps.version.outputs.sha }}
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+        env:
+          VITE_APP_ENV: production
+      - name: Publish
+        env:
+          DEPLOY_KEY: ${{ secrets.PRODUCTION_DEPLOY_KEY }}
+          SHA: ${{ steps.version.outputs.sha }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -t ed25519 github.com >> ~/.ssh/known_hosts 2>/dev/null
+          git clone -q --depth 1 --branch gh-pages git@github.com:ArtemiiVarta/pm-console-app.git site \
+            || (git init -q -b gh-pages site && git -C site remote add origin git@github.com:ArtemiiVarta/pm-console-app.git)
+          find site -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+          cp -R dist/. site/
+          touch site/.nojekyll
+          cd site
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "Deploy ArtemiiVarta/pm-console@$SHA" || echo "Nothing changed."
+          git push -q origin gh-pages

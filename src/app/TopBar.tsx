@@ -1,10 +1,11 @@
-import { LayoutDashboard, LogOut, Moon, Sun } from 'lucide-react'
+import { FlaskConical, LayoutDashboard, LogOut, Moon, Sun } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { useNavigate } from 'react-router-dom'
 import { DataBackupButtons } from '@/app/DataBackupButtons'
 import { SyncButton } from '@/features/sync/SyncControls'
 import { IconButton } from '@/components/IconButton'
 import { useAuth } from '@/features/auth/useAuth'
+import { IS_PRODUCTION } from '@/lib/env'
 import { useAppStore } from '@/store/useAppStore'
 
 export function TopBar() {
@@ -22,6 +23,15 @@ export function TopBar() {
             <LayoutDashboard className="h-4 w-4" aria-hidden />
           </div>
           <span className="text-base font-semibold">PM Console</span>
+          {!IS_PRODUCTION && (
+            <span
+              className="inline-flex items-center gap-1 rounded-full border border-warning/40 bg-warning/10 px-2 py-0.5 text-xs font-medium text-warning"
+              title="Staging site for testing new features. Its projects are separate from Production."
+            >
+              <FlaskConical className="h-3 w-3" aria-hidden />
+              Staging
+            </span>
+          )}
         </div>
         <span className="text-border" aria-hidden>
           /

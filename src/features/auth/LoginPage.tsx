@@ -13,10 +13,11 @@ import {
 import { PIN_LENGTH, verifyPin } from '@/features/auth/pin'
 import type { LoginRedirectState } from '@/features/auth/RequireAuth'
 import { useAuth } from '@/features/auth/useAuth'
+import { storageKey } from '@/lib/env'
 import { cn } from '@/lib/utils'
 
 // Lockout survives a page reload within the tab.
-const LOCKOUT_KEY = 'pm-console-lockout'
+const LOCKOUT_KEY = storageKey('lockout')
 const DEFAULT_ROUTE = '/'
 
 // Wall clock for lockout timing, read in event handlers and timers only.

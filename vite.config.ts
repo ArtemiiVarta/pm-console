@@ -5,8 +5,9 @@ import { defineConfig } from 'vite'
 
 // https://vite.dev/config/
 export default defineConfig({
-  // Served from https://artemiivarta.github.io/pm-console/
-  base: '/pm-console/',
+  // Staging: https://artemiivarta.github.io/pm-console/
+  // Production (VITE_APP_ENV=production): https://artemiivarta.github.io/pm-console-app/
+  base: process.env.VITE_APP_ENV === 'production' ? '/pm-console-app/' : '/pm-console/',
   plugins: [react()],
   resolve: {
     alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },

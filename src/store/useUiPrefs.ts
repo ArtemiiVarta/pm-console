@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
+import { storageKey } from '@/lib/env'
 
 // Per-browser view preferences, kept apart from project data (not exported or baselined).
 interface UiPrefs {
@@ -15,7 +16,7 @@ export const useUiPrefs = create<UiPrefs>()(
       setShowFinancials: (showFinancials) => set({ showFinancials }),
     }),
     {
-      name: 'pm-console-ui',
+      name: storageKey('ui'),
       version: 1,
       storage: createJSONStorage(() => localStorage),
       partialize: ({ showFinancials }) => ({ showFinancials }),

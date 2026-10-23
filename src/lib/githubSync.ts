@@ -1,6 +1,9 @@
 // GitHub storage for all projects: one JSON file in a private repository, read and written
 // with the GitHub REST "contents" API straight from the browser. Each device keeps its own
 // fine-grained token (Contents: read & write on that one repository) in localStorage.
+// Staging and Production share the token but each site reads and writes its own file.
+
+import { dataPath } from '@/lib/env'
 
 export interface GitHubSettings {
   token: string
@@ -14,9 +17,10 @@ export const DEFAULT_GITHUB_SETTINGS: Omit<GitHubSettings, 'token'> = {
   owner: 'ArtemiiVarta',
   repo: 'pm-console-data',
   branch: 'main',
-  path: 'projects.json',
+  path: dataPath(),
 }
 
+// Shared by both sites (same origin, same repository), so Production needs no second setup.
 const SETTINGS_KEY = 'pm-console-github'
 
 export function loadGitHubSettings(): GitHubSettings | null {
@@ -24,7 +28,10 @@ export function loadGitHubSettings(): GitHubSettings | null {
     const raw = localStorage.getItem(SETTINGS_KEY)
     if (!raw) return null
     const parsed = JSON.parse(raw) as Partial<GitHubSettings>
-    return parsed.token ? { ...DEFAULT_GITHUB_SETTINGS, ...parsed, token: parsed.token } : null
+    // The file always follows the site, whatever an older version saved.
+    return parsed.token
+      ? { ...DEFAULT_GITHUB_SETTINGS, ...parsed, path: DEFAULT_GITHUB_SETTINGS.path, token: parsed.token }
+      : null
   } catch {
     return null
   }

@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { createBackup, type Backup } from '@/lib/backupFile'
+import { storageKey } from '@/lib/env'
 import {
   GitHubError,
   loadGitHubSettings,
@@ -27,14 +28,15 @@ interface SyncState {
 
 /** What this device last synced, kept across reloads. */
 interface SyncMemory {
-  /** sha of projects.json this device last read or wrote. */
+  /** sha of this site's data file that this device last read or wrote. */
   sha: string | null
   /** Local changes not yet saved to GitHub. */
   dirty: boolean
   lastSyncedAt: string | null
 }
 
-const MEMORY_KEY = 'pm-console-github-state'
+// Per site: Staging and Production sync different files.
+const MEMORY_KEY = storageKey('github-sync')
 const SAVE_DELAY_MS = 2500
 
 export const useSync = create<SyncState>(() => ({

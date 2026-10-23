@@ -19,7 +19,7 @@ function fakeGitHub(initial: string | null) {
       return Response.json({ content: { sha: file.sha } })
     }
     if (!file) return new Response('{}', { status: 404 })
-    expect(url).toContain('/repos/ArtemiiVarta/pm-console-data/contents/projects.json')
+    expect(url).toContain('/repos/ArtemiiVarta/pm-console-data/contents/staging/projects.json')
     return Response.json({ sha: file.sha, encoding: 'base64', content: toBase64(file.text) })
   })
   vi.stubGlobal('fetch', fetchMock)
@@ -54,6 +54,7 @@ beforeEach(() => {
     branch: 'main',
     path: 'projects.json',
   })
+  localStorage.removeItem('pm-console-github-sync')
 })
 
 afterEach(() => {
@@ -95,8 +96,8 @@ describe('GitHub sync', () => {
     github.remoteSave(workspaceText('Laptop version'))
     useAppStore.getState().updateProject({ name: 'Desktop version' })
     localStorage.setItem(
-      'pm-console-github-state',
-      JSON.stringify({ ...JSON.parse(localStorage.getItem('pm-console-github-state') ?? '{}'), dirty: true }),
+      'pm-console-github-sync',
+      JSON.stringify({ ...JSON.parse(localStorage.getItem('pm-console-github-sync') ?? '{}'), dirty: true }),
     )
 
     await pullNow()
@@ -109,8 +110,8 @@ describe('GitHub sync', () => {
 
     github.remoteSave(workspaceText('Newest laptop'))
     localStorage.setItem(
-      'pm-console-github-state',
-      JSON.stringify({ ...JSON.parse(localStorage.getItem('pm-console-github-state') ?? '{}'), dirty: true }),
+      'pm-console-github-sync',
+      JSON.stringify({ ...JSON.parse(localStorage.getItem('pm-console-github-sync') ?? '{}'), dirty: true }),
     )
     await pullNow()
     await resolveConflict('remote')
@@ -142,5 +143,20 @@ describe('base64', () => {
   it('round-trips non-Latin text', () => {
     const text = 'Projet été — 東京 ✓'
     expect(fromBase64(toBase64(text))).toBe(text)
+  })
+})
+
+describe('environments', () => {
+  it('keeps Staging and Production apart', async () => {
+    const { dataPath, storageKey } = await import('@/lib/env')
+    expect(dataPath('staging')).toBe('staging/projects.json')
+    expect(dataPath('production')).toBe('projects.json')
+    expect(storageKey('v1', 'staging')).toBe('pm-console-v1')
+    expect(storageKey('v1', 'production')).toBe('pm-console-prod-v1')
+  })
+
+  it('always syncs this site’s file, even if an older version saved another path', async () => {
+    const { loadGitHubSettings } = await import('@/lib/githubSync')
+    expect(loadGitHubSettings()?.path).toBe('staging/projects.json')
   })
 })

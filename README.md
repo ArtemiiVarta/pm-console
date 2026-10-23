@@ -2,7 +2,8 @@
 
 Project management, planning and monitoring console for SAP-style consulting engagements. Single-user, runs entirely in the browser. Data is kept in `localStorage` and, optionally, synced to a private GitHub repository so it follows you across computers.
 
-**Live:** https://artemiivarta.github.io/pm-console/
+**Production:** https://artemiivarta.github.io/pm-console-app/ — the tested version, for real projects.
+**Staging:** https://artemiivarta.github.io/pm-console/ — every change lands here first for testing (marked with a **Staging** badge).
 
 > **Access note.** The PIN screen is a convenience lock, not security: this is a static site and the repository is public. Do not store confidential client data here. Proper sign-in (Google account) is planned.
 
@@ -68,4 +69,20 @@ Open the URL Vite prints (http://localhost:5173/pm-console/).
 
 ## Deployment
 
-Every push to `main` runs `.github/workflows/deploy.yml`: lint → typecheck → test → build → deploy `dist/` to GitHub Pages.
+Two environments, both on GitHub Pages:
+
+|                  | Staging                                              | Production                                                                                             |
+| ---------------- | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| URL              | https://artemiivarta.github.io/pm-console/           | https://artemiivarta.github.io/pm-console-app/                                                         |
+| Deployed         | automatically on every push to `main` (`deploy.yml`) | by hand (`deploy-production.yml`)                                                                      |
+| Hosted from      | this repository                                      | built files on branch `gh-pages` of [`pm-console-app`](https://github.com/ArtemiiVarta/pm-console-app) |
+| GitHub data file | `pm-console-data` › `staging/projects.json`          | `pm-console-data` › `projects.json`                                                                    |
+| Browser storage  | `pm-console-*` keys                                  | `pm-console-prod-*` keys                                                                               |
+
+**Release flow**
+
+1. Push to `main`. _Deploy to Staging_ runs lint → typecheck → test → build and publishes Staging.
+2. Test on Staging. Its projects are separate, so testing never touches real data.
+3. Open **Actions › Deploy to Production › Run workflow**. Leave _Commit_ empty to ship exactly the version on Staging (the last successful Staging deploy), or enter a commit SHA to ship or roll back to a specific version. It runs the tests, builds with `VITE_APP_ENV=production` and pushes to `pm-console-app`; the site updates about a minute later.
+
+The workflow writes to `pm-console-app` with a deploy key stored as the `PRODUCTION_DEPLOY_KEY` secret. The build reads `VITE_APP_ENV` (`production`, otherwise Staging) to choose the base path, storage keys, data file and the Staging badge — see `src/lib/env.ts`. Both sites share the GitHub sync token (same browser origin), so connecting one connects the other.

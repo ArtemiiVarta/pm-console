@@ -3,6 +3,7 @@ import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
 import { buildBaseline } from '@/lib/baseline'
 import { getWeekStart, parseISODate, toISODate } from '@/lib/dates'
+import { storageKey } from '@/lib/env'
 import { getPhaseColor } from '@/lib/palette'
 import {
   fitSchedule,
@@ -22,7 +23,7 @@ import type {
   TeamMember,
 } from '@/store/types'
 
-export const STORE_KEY = 'pm-console-v1'
+export const STORE_KEY = storageKey('v1')
 export const STORE_VERSION = 4
 
 const MIN_LOAD_PCT = 0

@@ -1,8 +1,9 @@
 import { create } from 'zustand'
+import { storageKey } from '@/lib/env'
 
 // Session flag lives in sessionStorage, so closing the tab logs out.
 // Keep all sign-in state behind this hook so the PIN can later be swapped for Google sign-in.
-const SESSION_KEY = 'pm-console-session'
+const SESSION_KEY = storageKey('session')
 
 function readSession(): boolean {
   try {
