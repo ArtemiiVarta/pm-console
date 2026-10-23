@@ -1,7 +1,7 @@
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { App } from '@/app/App'
-import { useAuth } from '@/features/auth/useAuth'
+import { signInForTest } from '@/test/auth'
 import { DEFAULT_FX_RATES } from '@/lib/fx'
 import { createInitialWorkspace, useAppStore } from '@/store/useAppStore'
 import { usePortfolioPrefs } from '@/store/usePortfolioPrefs'
@@ -39,7 +39,7 @@ function renderHome() {
 
 beforeEach(() => {
   localStorage.clear()
-  useAuth.getState().signIn()
+  signInForTest()
 })
 
 describe('Projects page', () => {

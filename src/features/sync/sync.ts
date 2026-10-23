@@ -1,14 +1,13 @@
 import { create } from 'zustand'
+import { useAuth } from '@/features/auth/useAuth'
+import { ApiError, readData, writeData } from '@/lib/api'
 import { createBackup, type Backup } from '@/lib/backupFile'
 import { storageKey } from '@/lib/env'
-import {
-  GitHubError,
-  loadGitHubSettings,
-  readRemote,
-  writeRemote,
-  type GitHubSettings,
-} from '@/lib/githubSync'
-import { STORE_VERSION, useAppStore, type AppData } from '@/store/useAppStore'
+import { STORE_KEY, STORE_VERSION, useAppStore, type AppData } from '@/store/useAppStore'
+
+// Always-on sync of every project to GitHub, through the PM Console API, while signed in.
+// This browser's copy is a cache: it loads on sign-in, saves shortly after each change and when
+// the tab is hidden or closed, and checks for changes from other computers every few seconds.
 
 export type SyncStatus = 'off' | 'loading' | 'saving' | 'saved' | 'error' | 'conflict'
 
@@ -18,8 +17,6 @@ export interface SyncConflict {
 }
 
 interface SyncState {
-  /** Bumped when this device connects or disconnects, to restart syncing. */
-  session: number
   status: SyncStatus
   message: string
   lastSyncedAt: string | null
@@ -37,11 +34,13 @@ interface SyncMemory {
 
 // Per site: Staging and Production sync different files.
 const MEMORY_KEY = storageKey('github-sync')
-const SAVE_DELAY_MS = 2500
+const SAVE_DELAY_MS = 1500
+const POLL_MS = 15_000
+
+const signedIn = () => useAuth.getState().session !== null
 
 export const useSync = create<SyncState>(() => ({
-  session: 0,
-  status: loadGitHubSettings() ? 'loading' : 'off',
+  status: signedIn() ? 'loading' : 'off',
   message: '',
   lastSyncedAt: readMemory().lastSyncedAt,
   conflict: null,
@@ -128,13 +127,12 @@ function fail(error: unknown) {
 
 /** Reads GitHub and reconciles: take remote changes, push local ones, or ask on a conflict. */
 export async function pullNow(): Promise<void> {
-  const settings = loadGitHubSettings()
-  if (!settings || busy) return
+  if (!signedIn() || busy) return
   busy = true
   if (useSync.getState().status !== 'conflict') useSync.setState({ status: 'loading', message: '' })
   try {
     const memory = readMemory()
-    const remote = await readRemote(settings)
+    const remote = await readData()
     if (!remote) {
       // No data file yet: this device creates it.
       busy = false
@@ -167,24 +165,15 @@ export async function pullNow(): Promise<void> {
 
 /** Saves every project to GitHub. With `overwriteSha`, replaces a version saved elsewhere. */
 export async function pushNow(overwriteSha?: string): Promise<void> {
-  const settings = loadGitHubSettings()
-  if (!settings || busy) return
+  if (!signedIn() || busy) return
   if (useSync.getState().status === 'conflict' && !overwriteSha) return
   busy = true
   window.clearTimeout(saveTimer)
   const startedAt = changeCounter
   useSync.setState({ status: 'saving', message: '' })
   try {
-    const { library, activeProjectId } = useAppStore.getState()
     const now = new Date()
-    const text = JSON.stringify(createBackup({ library, activeProjectId }, STORE_VERSION, now), null, 2)
-    const count = Object.keys(library).length
-    const sha = await writeRemote(
-      settings,
-      text,
-      overwriteSha ?? readMemory().sha,
-      `Update ${count} project${count === 1 ? '' : 's'} from PM Console`,
-    )
+    const sha = await writeData(snapshot(now), overwriteSha ?? readMemory().sha)
     const stillDirty = changeCounter !== startedAt
     writeMemory({ sha, dirty: stillDirty, lastSyncedAt: now.toISOString() })
     useSync.setState({ status: 'saved', message: '', lastSyncedAt: now.toISOString(), conflict: null })
@@ -192,7 +181,7 @@ export async function pushNow(overwriteSha?: string): Promise<void> {
     if (stillDirty) scheduleSave()
   } catch (error) {
     busy = false
-    if (error instanceof GitHubError && error.status === 409) {
+    if (error instanceof ApiError && error.status === 409) {
       // Someone else saved first: compare with their version.
       writeMemory({ dirty: true })
       await pullNow()
@@ -209,9 +198,47 @@ function scheduleSave() {
   saveTimer = window.setTimeout(() => void pushNow(), SAVE_DELAY_MS)
 }
 
-/** Restarts syncing after connecting or disconnecting this device. */
-export function restartSync() {
-  useSync.setState((state) => ({ session: state.session + 1, conflict: null }))
+function snapshot(now: Date): string {
+  const { library, activeProjectId } = useAppStore.getState()
+  return JSON.stringify(createBackup({ library, activeProjectId }, STORE_VERSION, now), null, 2)
+}
+
+/** True while this browser has changes GitHub does not have yet. */
+export function hasUnsavedChanges(): boolean {
+  return readMemory().dirty
+}
+
+/** Last-chance save when the tab is hidden or closing; the request outlives the page. */
+function flush() {
+  if (!signedIn() || busy || !readMemory().dirty || useSync.getState().status === 'conflict') return
+  window.clearTimeout(saveTimer)
+  const now = new Date()
+  const startedAt = changeCounter
+  busy = true
+  writeData(snapshot(now), readMemory().sha, true)
+    .then((sha) => {
+      writeMemory({ sha, dirty: changeCounter !== startedAt, lastSyncedAt: now.toISOString() })
+      useSync.setState({ status: 'saved', message: '', lastSyncedAt: now.toISOString() })
+    })
+    .catch(() => {
+      // Still marked unsaved; the next pull or save sorts it out.
+    })
+    .finally(() => {
+      busy = false
+    })
+}
+
+/** Another tab of this site saved projects to this browser: show them here too. */
+async function adoptOtherTab() {
+  const { activeProjectId } = useAppStore.getState()
+  applyingRemote = true
+  try {
+    await useAppStore.persist.rehydrate()
+    // Keep this tab on the project it had open.
+    if (useAppStore.getState().library[activeProjectId]) useAppStore.getState().openProject(activeProjectId)
+  } finally {
+    applyingRemote = false
+  }
 }
 
 /** Resolves a conflict by keeping this device's projects or GitHub's. */
@@ -227,12 +254,12 @@ export async function resolveConflict(keep: 'local' | 'remote'): Promise<void> {
 }
 
 /**
- * Starts syncing for this page: load now, save after local changes, and check GitHub again when
- * the tab regains focus and once a minute. Returns a cleanup function.
+ * Starts syncing for the signed-in page: load now, save after local changes and when the tab is
+ * hidden, and check GitHub when the tab is shown and every 15 seconds. Returns a cleanup function.
  */
 export function startSync(): () => void {
-  if (!loadGitHubSettings()) {
-    useSync.setState({ status: 'off', message: '' })
+  if (!signedIn()) {
+    useSync.setState({ status: 'off', message: '', conflict: null })
     return () => {}
   }
   void pullNow()
@@ -245,14 +272,22 @@ export function startSync(): () => void {
   const refresh = () => {
     if (!readMemory().dirty && !busy && document.visibilityState === 'visible') void pullNow()
   }
-  const interval = window.setInterval(refresh, 60_000)
+  const onVisibility = () => (document.visibilityState === 'hidden' ? flush() : refresh())
+  const onStorage = (event: StorageEvent) => {
+    if (event.key === STORE_KEY && event.newValue) void adoptOtherTab()
+  }
+  const interval = window.setInterval(refresh, POLL_MS)
   window.addEventListener('focus', refresh)
+  window.addEventListener('pagehide', flush)
+  window.addEventListener('storage', onStorage)
+  document.addEventListener('visibilitychange', onVisibility)
   return () => {
     unsubscribe()
     window.clearInterval(interval)
     window.removeEventListener('focus', refresh)
+    window.removeEventListener('pagehide', flush)
+    window.removeEventListener('storage', onStorage)
+    document.removeEventListener('visibilitychange', onVisibility)
     window.clearTimeout(saveTimer)
   }
 }
-
-export type { GitHubSettings }

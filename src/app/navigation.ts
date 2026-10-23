@@ -5,6 +5,7 @@ import {
   FileText,
   LayoutGrid,
   Settings,
+  ShieldCheck,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -14,6 +15,8 @@ export interface NavTab {
   icon: LucideIcon
   /** Active only on an exact match (the home page). */
   end?: boolean
+  /** Shown only to admins. */
+  adminOnly?: boolean
 }
 
 /** Main tabs, in display order. Icons follow the CLAUDE.md mapping. */
@@ -24,4 +27,5 @@ export const navTabs: NavTab[] = [
   { path: '/monitoring', label: 'Monitoring', icon: Activity },
   { path: '/forecast-vs-actual', label: 'Forecast vs Actual', icon: BarChart3 },
   { path: '/reports', label: 'Reports', icon: FileText },
+  { path: '/admin', label: 'Admin', icon: ShieldCheck, adminOnly: true },
 ]

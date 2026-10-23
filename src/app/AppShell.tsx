@@ -3,11 +3,13 @@ import { Loader2 } from 'lucide-react'
 import { Outlet } from 'react-router-dom'
 import { TabBar } from '@/app/TabBar'
 import { TopBar } from '@/app/TopBar'
+import { SessionCheck } from '@/features/auth/session'
 import { SyncController } from '@/features/sync/SyncControls'
 
 export function AppShell() {
   return (
     <div className="min-h-screen">
+      <SessionCheck />
       <SyncController />
       <header className="sticky top-0 z-40">
         <TopBar />

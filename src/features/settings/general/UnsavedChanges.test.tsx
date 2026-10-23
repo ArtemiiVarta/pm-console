@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { App } from '@/app/App'
-import { useAuth } from '@/features/auth/useAuth'
+import { signInForTest } from '@/test/auth'
 import { createInitialData, useAppStore } from '@/store/useAppStore'
 
 // The first render loads the page chunk, which can be slow on a busy machine.
@@ -11,7 +11,7 @@ beforeEach(() => {
   localStorage.clear()
   useAppStore.setState(createInitialData())
   useAppStore.getState().updateProject({ name: 'Wave 1' })
-  useAuth.getState().signIn()
+  signInForTest()
   window.location.hash = '#/settings/general'
 })
 

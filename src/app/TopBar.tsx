@@ -1,17 +1,35 @@
+import { useState } from 'react'
 import { FlaskConical, LayoutDashboard, LogOut, Moon, Sun } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { useNavigate } from 'react-router-dom'
 import { DataBackupButtons } from '@/app/DataBackupButtons'
 import { SyncButton } from '@/features/sync/SyncControls'
+import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { IconButton } from '@/components/IconButton'
+import { finishLogOut, saveBeforeLogOut } from '@/features/auth/session'
 import { useAuth } from '@/features/auth/useAuth'
 import { IS_PRODUCTION } from '@/lib/env'
 import { useAppStore } from '@/store/useAppStore'
 
 export function TopBar() {
   const projectName = useAppStore((state) => state.project.name)
-  const signOut = useAuth((state) => state.signOut)
+  const user = useAuth((state) => state.session?.user ?? null)
   const navigate = useNavigate()
+  const [loggingOut, setLoggingOut] = useState(false)
+  const [unsavedWarning, setUnsavedWarning] = useState(false)
+
+  const logOut = () => {
+    finishLogOut()
+    navigate('/login', { replace: true })
+  }
+
+  const requestLogOut = async () => {
+    setLoggingOut(true)
+    const saved = await saveBeforeLogOut()
+    setLoggingOut(false)
+    if (saved) logOut()
+    else setUnsavedWarning(true)
+  }
   const { resolvedTheme, setTheme } = useTheme()
   const isDark = resolvedTheme === 'dark'
 
@@ -49,17 +67,59 @@ export function TopBar() {
             tooltip={isDark ? 'Switch to the light theme' : 'Switch to the dark theme'}
             onClick={() => setTheme(isDark ? 'light' : 'dark')}
           />
+          {user && <UserBadge name={user.name} email={user.email} picture={user.picture} role={user.role} />}
           <IconButton
             icon={LogOut}
             label="Log out"
-            tooltip="Lock the console and return to the PIN screen"
-            onClick={() => {
-              signOut()
-              navigate('/login', { replace: true })
-            }}
+            tooltip="Save, sign out and clear this browser's copy of the projects"
+            disabled={loggingOut}
+            onClick={() => void requestLogOut()}
+          />
+          <ConfirmDialog
+            open={unsavedWarning}
+            onOpenChange={setUnsavedWarning}
+            title="Log out without saving?"
+            description="Some changes could not be saved to GitHub (no connection, or a version conflict to resolve). Logging out now loses them."
+            confirmLabel="Log out anyway"
+            confirmIcon={LogOut}
+            onConfirm={logOut}
           />
         </div>
       </div>
     </div>
+  )
+}
+
+function UserBadge({
+  name,
+  email,
+  picture,
+  role,
+}: {
+  name: string
+  email: string
+  picture: string
+  role: string
+}) {
+  const initials = (name || email)
+    .split(/[\s@.]+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join('')
+  return (
+    <span
+      className="ml-1 flex items-center gap-2 rounded-full py-0.5 pl-0.5 pr-2 text-sm"
+      title={`Signed in as ${email} (${role})`}
+    >
+      {picture ? (
+        <img src={picture} alt="" referrerPolicy="no-referrer" className="h-7 w-7 rounded-full" />
+      ) : (
+        <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-xs font-medium text-primary">
+          {initials}
+        </span>
+      )}
+      <span className="hidden max-w-40 truncate md:inline">{name || email}</span>
+    </span>
   )
 }

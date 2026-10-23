@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { Navigate, useLocation } from 'react-router-dom'
-import { useAuth } from '@/features/auth/useAuth'
+import { selectIsAdmin, useAuth } from '@/features/auth/useAuth'
 
 export interface LoginRedirectState {
   from?: string
@@ -16,4 +16,10 @@ export function RequireAuth({ children }: { children: ReactNode }) {
     return <Navigate to="/login" replace state={state} />
   }
   return <>{children}</>
+}
+
+/** Admin-only pages: everyone else goes back to Projects. */
+export function RequireAdmin({ children }: { children: ReactNode }) {
+  const isAdmin = useAuth(selectIsAdmin)
+  return isAdmin ? <>{children}</> : <Navigate to="/" replace />
 }

@@ -1,7 +1,7 @@
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { App } from '@/app/App'
-import { useAuth } from '@/features/auth/useAuth'
+import { signInForTest } from '@/test/auth'
 import { createInitialData, useAppStore } from '@/store/useAppStore'
 
 const store = () => useAppStore.getState()
@@ -33,7 +33,7 @@ function seedPhase() {
 beforeEach(() => {
   localStorage.clear()
   useAppStore.setState(createInitialData())
-  useAuth.getState().signIn()
+  signInForTest()
 })
 
 describe('Project schedule (Gantt)', () => {

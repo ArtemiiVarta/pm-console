@@ -32,7 +32,7 @@ src/
   components/ui/  # shadcn components (generated)
   components/     # shared app components (PageHeader, SectionCard, IconButton, EmptyState, StatTile)
   features/
-    auth/         # PIN login
+    auth/         # Google sign-in (session from the API in /worker)
     settings/     # Project Settings tab: general/, schedule/, team/, baselines/
     planning/ monitoring/ forecast-vs-actual/ reports/
   store/          # Zustand slices + types

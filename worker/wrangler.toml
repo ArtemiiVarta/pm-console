@@ -1,0 +1,16 @@
+# PM Console API. Deploy: npm run worker:deploy
+# Secrets (set once, never committed):
+#   npx wrangler secret put GITHUB_TOKEN   --config worker/wrangler.toml
+#   npx wrangler secret put SESSION_SECRET --config worker/wrangler.toml
+name = "pm-console-api"
+main = "src/index.ts"
+compatibility_date = "2026-10-01"
+workers_dev = true
+
+[vars]
+GOOGLE_CLIENT_ID = ""
+OWNER_EMAIL = "vvarta@gmail.com"
+DATA_OWNER = "ArtemiiVarta"
+DATA_REPO = "pm-console-data"
+DATA_BRANCH = "main"
+ALLOWED_ORIGINS = "https://artemiivarta.github.io,http://localhost:5173"

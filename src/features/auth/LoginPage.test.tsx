@@ -1,125 +1,164 @@
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { App } from '@/app/App'
-import { LOCKOUT_MS } from '@/features/auth/lockout'
+import type { GoogleCredentialResponse } from '@/features/auth/googleIdentity'
 import { useAuth } from '@/features/auth/useAuth'
+import type { Session } from '@/lib/api'
+import { createInitialWorkspace, useAppStore } from '@/store/useAppStore'
+import { signInForTest } from '@/test/auth'
 
-// The tests use their own PIN so the real one never appears in the code.
-const CORRECT_PIN = '4321'
-const TEST_PIN_HASH = 'fe2592b42a727e977f055947385b709cc82b16b9a87f88c6abf3900d65d0cdc3'
+let googleCallback: ((response: GoogleCredentialResponse) => void) | null = null
+const disableAutoSelect = vi.fn()
 
-vi.mock('@/features/auth/pin', async (importOriginal) => {
-  const original = await importOriginal<typeof import('@/features/auth/pin')>()
-  return { ...original, verifyPin: (pin: string) => original.verifyPin(pin, TEST_PIN_HASH) }
-})
+/** Stand-in for Google Identity Services: renders a plain button that "returns" a credential. */
+function installFakeGoogle() {
+  window.google = {
+    accounts: {
+      id: {
+        initialize: vi.fn((options: { callback: (response: GoogleCredentialResponse) => void }) => {
+          googleCallback = options.callback
+        }),
+        renderButton: vi.fn((element: HTMLElement) => {
+          const button = document.createElement('button')
+          button.textContent = 'Sign in with Google'
+          button.onclick = () => googleCallback?.({ credential: 'google-id-token' })
+          element.replaceChildren(button)
+        }),
+        prompt: vi.fn(),
+        disableAutoSelect,
+      },
+    },
+  }
+}
+
+function session(role: 'admin' | 'user', email = 'owner@example.com'): Session {
+  return {
+    token: 'session-token',
+    expiresAt: Date.now() + 30 * 86_400_000,
+    user: { email, name: 'Ada Lovelace', picture: '', role },
+  }
+}
+
+/** Fake API: /auth/google answers with `signInResponse`; everything else is unavailable. */
+function fakeApi(signInResponse: Response) {
+  const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+    if (url === 'https://api.test/auth/google') {
+      expect(JSON.parse(String(init?.body))).toEqual({ credential: 'google-id-token' })
+      return signInResponse
+    }
+    return Response.json({ error: 'Offline' }, { status: 503 })
+  })
+  vi.stubGlobal('fetch', fetchMock)
+  return fetchMock
+}
 
 function renderAt(hash: string) {
   window.location.hash = hash
   render(<App />)
 }
 
-const boxes = () => screen.getAllByLabelText(/Digit \d of 4/) as HTMLInputElement[]
-const values = () => boxes().map((box) => box.value)
-
 beforeEach(() => {
-  sessionStorage.clear()
-  useAuth.setState({ isAuthenticated: false })
+  localStorage.clear()
+  installFakeGoogle()
+  useAppStore.setState(createInitialWorkspace())
 })
 
 afterEach(() => {
-  vi.useRealTimers()
+  delete window.google
 })
 
-describe('LoginPage', () => {
-  it('redirects to /login and focuses the first box', async () => {
+describe('Google sign-in', () => {
+  it('sends signed-out visitors to the sign-in page', async () => {
     renderAt('#/settings')
-    expect(await screen.findByText('Enter your 4-digit PIN')).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Sign in with Google' })).toBeInTheDocument()
     expect(window.location.hash).toBe('#/login')
-    expect(boxes()[0]).toHaveFocus()
   })
 
-  it('unlocks with the correct PIN and returns to the requested page', async () => {
+  it('signs in with Google and returns to the requested page', async () => {
     const user = userEvent.setup()
+    fakeApi(Response.json(session('admin')))
     renderAt('#/planning')
-    await screen.findByText('Enter your 4-digit PIN')
-
-    await user.keyboard(CORRECT_PIN)
+    await user.click(await screen.findByRole('button', { name: 'Sign in with Google' }))
 
     expect(await screen.findByRole('heading', { level: 1, name: 'Planning' })).toBeInTheDocument()
-    expect(window.location.hash).toBe('#/planning')
-    expect(sessionStorage.getItem('pm-console-session')).toBe('1')
+    expect(JSON.parse(localStorage.getItem('pm-console-auth') ?? '{}')).toMatchObject({
+      token: 'session-token',
+      user: { email: 'owner@example.com', role: 'admin' },
+    })
+    expect(screen.getByTitle('Signed in as owner@example.com (admin)')).toHaveTextContent('Ada Lovelace')
   })
 
-  it('auto-advances, and Backspace moves to the previous box', async () => {
+  it('explains when the Google account has no access', async () => {
     const user = userEvent.setup()
+    fakeApi(
+      Response.json(
+        { error: 'stranger@example.com doesn’t have access. Ask an admin to add you.' },
+        { status: 403 },
+      ),
+    )
     renderAt('#/login')
-    await user.keyboard('27')
-    expect(values()).toEqual(['2', '7', '', ''])
-    expect(boxes()[2]).toHaveFocus()
-
-    await user.keyboard('{Backspace}')
-    expect(values()).toEqual(['2', '', '', ''])
-    expect(boxes()[1]).toHaveFocus()
-  })
-
-  it('shows an error and clears the boxes on a wrong PIN', async () => {
-    const user = userEvent.setup()
-    renderAt('#/login')
-
-    await user.keyboard('1111')
-
-    expect(await screen.findByText(/Incorrect PIN/)).toBeInTheDocument()
-    expect(values()).toEqual(['', '', '', ''])
-    expect(boxes()[0]).toHaveFocus()
+    await user.click(await screen.findByRole('button', { name: 'Sign in with Google' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(/stranger@example.com doesn’t have access/)
     expect(useAuth.getState().isAuthenticated).toBe(false)
   })
 
-  it('fills every box when 4 digits are pasted, and submits', async () => {
+  it('clears another person’s cached projects when someone else signs in', async () => {
     const user = userEvent.setup()
+    localStorage.setItem('pm-console-last-user', 'previous@example.com')
+    useAppStore.getState().updateProject({ name: 'Someone else’s project' })
+    fakeApi(Response.json(session('user', 'next@example.com')))
     renderAt('#/login')
-
-    await user.paste(CORRECT_PIN)
-
-    expect(await screen.findByRole('heading', { level: 1, name: 'Projects' })).toBeInTheDocument()
+    await user.click(await screen.findByRole('button', { name: 'Sign in with Google' }))
+    await screen.findByRole('heading', { level: 1, name: 'Projects' })
+    expect(useAppStore.getState().project.name).toBe('')
   })
+})
 
-  it('fills from the focused box when fewer digits are pasted', async () => {
+describe('signed-in session', () => {
+  it('logs out, clears this browser’s copy and stops Google auto sign-in', async () => {
     const user = userEvent.setup()
-    renderAt('#/login')
-    await user.paste('27')
-    expect(values()).toEqual(['2', '7', '', ''])
-  })
-
-  it('locks input for 30 seconds after 5 wrong attempts', async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true })
-    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
-    renderAt('#/login')
-
-    for (let attempt = 1; attempt <= 4; attempt += 1) {
-      await user.keyboard('0000')
-      await screen.findByText(/Incorrect PIN/)
-    }
-    await user.keyboard('0000')
-
-    expect(await screen.findByText(/Too many attempts\. Try again in 30s/)).toBeInTheDocument()
-    for (const box of boxes()) expect(box).toBeDisabled()
-
-    act(() => {
-      vi.advanceTimersByTime(LOCKOUT_MS + 500)
-    })
-
-    await waitFor(() => expect(boxes()[0]).toBeEnabled())
-    expect(screen.queryByText(/Too many attempts/)).not.toBeInTheDocument()
-  })
-
-  it('logs out from the top bar and returns to /login', async () => {
-    const user = userEvent.setup()
-    useAuth.getState().signIn()
+    signInForTest()
+    useAppStore.getState().updateProject({ name: 'Cached project' })
+    localStorage.setItem('pm-console-github-sync', JSON.stringify({ sha: 's1', dirty: false }))
     renderAt('#/settings')
 
     await user.click(await screen.findByRole('button', { name: 'Log out' }))
 
-    expect(await screen.findByText('Enter your 4-digit PIN')).toBeInTheDocument()
-    expect(sessionStorage.getItem('pm-console-session')).toBeNull()
+    expect(await screen.findByRole('button', { name: 'Sign in with Google' })).toBeInTheDocument()
+    expect(localStorage.getItem('pm-console-auth')).toBeNull()
+    expect(useAppStore.getState().project.name).toBe('')
+    expect(disableAutoSelect).toHaveBeenCalled()
+  })
+
+  it('asks before logging out when changes could not be saved', async () => {
+    const user = userEvent.setup()
+    signInForTest()
+    localStorage.setItem('pm-console-github-sync', JSON.stringify({ sha: 's1', dirty: true }))
+    renderAt('#/settings')
+
+    await user.click(await screen.findByRole('button', { name: 'Log out' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Log out without saving?' })
+    expect(useAuth.getState().isAuthenticated).toBe(true)
+    await user.click(within(dialog).getByRole('button', { name: 'Log out anyway' }))
+    expect(useAuth.getState().isAuthenticated).toBe(false)
+  })
+
+  it('shows the Admin tab to admins only', async () => {
+    signInForTest('user', 'pm@example.com')
+    renderAt('#/admin')
+    const nav = await screen.findByRole('navigation', { name: 'Main' })
+    expect(within(nav).queryByText('Admin')).not.toBeInTheDocument()
+    await waitFor(() => expect(window.location.hash).toBe('#/'))
+  })
+
+  it('signs out with a notice when the server says access was removed', async () => {
+    signInForTest('user', 'gone@example.com')
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => Response.json({ error: 'gone@example.com no longer has access.' }, { status: 403 })),
+    )
+    renderAt('#/')
+    expect(await screen.findByText('gone@example.com no longer has access.')).toBeInTheDocument()
+    expect(useAuth.getState().isAuthenticated).toBe(false)
   })
 })

@@ -1,7 +1,7 @@
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { App } from '@/app/App'
-import { useAuth } from '@/features/auth/useAuth'
+import { signInForTest } from '@/test/auth'
 import { useUiPrefs } from '@/store/useUiPrefs'
 import { createInitialData, useAppStore, type NewTeamMember } from '@/store/useAppStore'
 
@@ -50,7 +50,7 @@ const save = (user: User) => user.click(screen.getByRole('button', { name: 'Save
 beforeEach(() => {
   localStorage.clear()
   useAppStore.setState(createInitialData())
-  useAuth.getState().signIn()
+  signInForTest()
 })
 
 describe('Planned allocation grid', () => {

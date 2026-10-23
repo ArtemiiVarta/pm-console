@@ -1,14 +1,14 @@
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { App } from '@/app/App'
-import { useAuth } from '@/features/auth/useAuth'
+import { signInForTest } from '@/test/auth'
 import { createBackup } from '@/lib/backupFile'
 import { createInitialData, STORE_VERSION, useAppStore } from '@/store/useAppStore'
 
 beforeEach(() => {
   localStorage.clear()
   useAppStore.setState(createInitialData())
-  useAuth.getState().signIn()
+  signInForTest()
   window.location.hash = '#/settings/general'
 })
 

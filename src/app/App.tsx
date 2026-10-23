@@ -3,7 +3,7 @@ import { createHashRouter, Navigate, RouterProvider, type RouteObject } from 're
 import { AppShell } from '@/app/AppShell'
 import { AppProviders } from '@/app/providers'
 import { LoginPage } from '@/features/auth/LoginPage'
-import { RequireAuth } from '@/features/auth/RequireAuth'
+import { RequireAdmin, RequireAuth } from '@/features/auth/RequireAuth'
 
 // Pages load on first visit, so the login screen and app shell ship in a small first bundle.
 const ProjectsPage = lazy(() =>
@@ -23,6 +23,7 @@ const ForecastVsActualPage = lazy(() =>
     default: m.ForecastVsActualPage,
   })),
 )
+const AdminPage = lazy(() => import('@/features/admin/AdminPage').then((m) => ({ default: m.AdminPage })))
 const ReportsPage = lazy(() =>
   import('@/features/reports/ReportsPage').then((m) => ({ default: m.ReportsPage })),
 )
@@ -47,6 +48,14 @@ const routes: RouteObject[] = [
       { path: 'monitoring', element: <MonitoringPage /> },
       { path: 'forecast-vs-actual', element: <ForecastVsActualPage /> },
       { path: 'reports', element: <ReportsPage /> },
+      {
+        path: 'admin',
+        element: (
+          <RequireAdmin>
+            <AdminPage />
+          </RequireAdmin>
+        ),
+      },
       ...(ComponentsGallery ? [{ path: 'dev/components', element: <ComponentsGallery /> }] : []),
       { path: '*', element: <Navigate to="/" replace /> },
     ],

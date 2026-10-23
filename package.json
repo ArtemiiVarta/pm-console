@@ -11,7 +11,8 @@
     "typecheck": "tsc -b --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "worker:deploy": "npx -y wrangler@4.152.0 deploy --config worker/wrangler.toml"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

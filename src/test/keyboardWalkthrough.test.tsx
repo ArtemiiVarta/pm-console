@@ -1,17 +1,8 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { App } from '@/app/App'
-import { useAuth } from '@/features/auth/useAuth'
 import { createInitialData, useAppStore } from '@/store/useAppStore'
-
-// Test-only PIN, as in the login tests: the real PIN never appears in the code.
-const TEST_PIN = '4321'
-const TEST_PIN_HASH = 'fe2592b42a727e977f055947385b709cc82b16b9a87f88c6abf3900d65d0cdc3'
-
-vi.mock('@/features/auth/pin', async (importOriginal) => {
-  const original = await importOriginal<typeof import('@/features/auth/pin')>()
-  return { ...original, verifyPin: (pin: string) => original.verifyPin(pin, TEST_PIN_HASH) }
-})
+import { signInForTest } from '@/test/auth'
 
 type User = ReturnType<typeof userEvent.setup>
 
@@ -31,17 +22,15 @@ beforeEach(() => {
   localStorage.clear()
   sessionStorage.clear()
   useAppStore.setState(createInitialData())
-  useAuth.setState({ isAuthenticated: false })
+  signInForTest()
 })
 
-it('login → add phase → add member → edit and save a week → create baseline, keyboard only', async () => {
+it('add phase → add member → edit and save a week → create baseline, keyboard only', async () => {
   const user = userEvent.setup()
   window.location.hash = '#/settings/schedule'
   render(<App />)
 
-  // 1. Login: focus starts in the first PIN box; typing auto-submits.
-  await screen.findByText('Enter your 4-digit PIN')
-  await user.keyboard(TEST_PIN)
+  // 1. Signed in (Google sign-in is tested in LoginPage.test.tsx); the schedule tab opens.
   await screen.findByRole('tab', { name: 'Project Schedule', selected: true })
 
   // 2. Add a phase: dialog opens with focus in the name field; Enter submits.

@@ -20,3 +20,9 @@ export function storageKey(name: string, env: AppEnv = APP_ENV): string {
 export function dataPath(env: AppEnv = APP_ENV): string {
   return env === 'production' ? 'projects.json' : 'staging/projects.json'
 }
+
+/** PM Console API (Cloudflare Worker in /worker): Google sign-in, people, and project data. */
+export const API_URL: string = import.meta.env.VITE_API_URL ?? ''
+
+/** Google OAuth Web client ID (public). */
+export const GOOGLE_CLIENT_ID: string = import.meta.env.VITE_GOOGLE_CLIENT_ID ?? ''

@@ -5,11 +5,12 @@ Project management, planning and monitoring console for SAP-style consulting eng
 **Production:** https://artemiivarta.github.io/pm-console-app/ — the tested version, for real projects.
 **Staging:** https://artemiivarta.github.io/pm-console/ — every change lands here first for testing (marked with a **Staging** badge).
 
-> **Access note.** The PIN screen is a convenience lock, not security: this is a static site and the repository is public. Do not store confidential client data here. Proper sign-in (Google account) is planned.
+> **Access.** Only people an admin has added can sign in (with Google). Project data never ships with the site: it lives in a private GitHub repository and is served only to signed-in people by the PM Console API (`/worker`).
 
 ## Features
 
-- **PIN login** — 4-digit PIN with auto-advance, paste, show/hide and a 30-second lock after 5 wrong attempts. Closing the tab signs you out.
+- **Sign in with Google** — only people on the access list; a sign-in lasts 30 days per browser. **Log out** saves, then clears that browser's copy of the projects.
+- **Admin** (admins only) — add people by Google email as _admin_ or _user_, change roles, remove access (applies within about 30 seconds). The owner is always an admin.
 - **Projects (home page)** — every project as a treemap: tile size follows forecast revenue, color follows status (Green / Amber / Red). Click a tile to open the project; **New project** creates one and opens its details. A table below lists all projects with open and delete actions.
 - **Project Settings › General** — project name, client, status (Green by default, Amber, Red) with an optional rationale, currency, standard hours per week, and whether phase days count working days (Mon–Fri) or calendar days. Summary tiles for start, end, duration, team size, forecast hours and margin.
 - **Project Settings › Project Schedule** — one Gantt chart: phases › tasks › sub-tasks, with milestones at every level (★) and project milestones. Drag bars to move them (children move along), drag their edges to change start or end, drag stars to move milestones; keyboard: ←/→ move, Shift+←/→ end, Alt+←/→ start. Parents can follow their children (start = earliest child start, end = latest child end), kept in sync. Colors per bar and star, overlap and gap warnings between phases, collapse/expand, today marker.
@@ -20,23 +21,20 @@ Project management, planning and monitoring console for SAP-style consulting eng
   - Baselines (versions): locked snapshots you can view read-only, compare (any two versions, per member), restore, and choose for Forecast vs Actual. A badge shows when the forecast has changed since the last baseline.
 - **Forecast vs Actual** — choose the baseline to compare against (actuals are coming next).
 - **Planning, Monitoring, Reports** — coming soon.
-- **GitHub sync** — all projects are saved to `projects.json` in a private repository (default `ArtemiiVarta/pm-console-data`). Loads on open, on focus and every minute; saves a few seconds after each change; asks which version to keep if two computers changed the same data. The cloud icon in the top bar shows the sync state.
+- **Always-on GitHub sync** — every project is saved to a private repository while you work: about 1.5 seconds after each change and when you leave the page; changes from other computers appear within 15 seconds; tabs in one browser stay in step. If two people change the same data at once, you choose which version to keep. The cloud icon in the top bar shows the sync state.
 - **Export / Import** — download all projects as a JSON backup and restore them later (import asks before overwriting).
 - Light and dark themes; works with keyboard only; usable from 1024 px wide.
 
 ## Usage guide
 
-1. **Unlock** with your PIN. Use **Log out** (top right) to lock again.
+1. **Sign in with Google.** Use **Log out** (top right) on shared computers.
 2. **Projects:** click **New project**, or click a tile to open an existing one. The current project's name is shown in the top bar.
 3. **General:** enter the project name, client, status (add a rationale for Amber or Red) and currency, set the standard hours per week (100% load), choose how phase days are counted, then **Save**.
 4. **Project Schedule:** **Add › Phase** for each phase and **Add › Milestone** for project key dates. Use a row's **⋯** menu to add tasks and milestones under a phase, or sub-tasks and sub-milestones under a task; tick **Adjust phase/task start/end date** to keep the parent fitted to its children. Drag bars and stars on the chart to change dates, or edit them from the ⋯ menu. Amber warnings flag overlapping phases and gaps.
 5. **Team Forecast → Team members:** **Add team member** with role, start date (weeks before it count as 0%), allocation, developer capacity and cost/price rates. The dialog previews margin per hour. Deactivate people to keep them but leave them out of totals. **Hide financials** collapses cost, price and margin.
 6. **Team Forecast → Planned allocation:** click a cell and type a value (Enter or Tab moves on, Esc cancels, an empty value goes back to the allocation). Switch **Load % / Hours** to work in either unit. Select a range with Shift+click, drag or Shift+arrows for bulk changes; use the row menu (⋯) to apply a % to a date range. Then **Save changes** (Ctrl+S) or **Discard**.
 7. **Create baseline** when the forecast is agreed. Use **Versions** to view, compare, restore or pick the baseline for Forecast vs Actual.
-8. **Sync across computers (once per computer):**
-   1. Open GitHub › Settings › Developer settings › [Fine-grained tokens](https://github.com/settings/personal-access-tokens/new).
-   2. Repository access: **Only select repositories** › `pm-console-data`. Permissions › Repository › **Contents: Read and write**. Nothing else.
-   3. Generate the token, click the cloud icon in the top bar, paste it and **Connect**. The token stays in that browser only; **Disconnect** removes it.
+8. **People (admins):** open **Admin**, enter a Google email, pick _User_ or _Admin_, **Add person**. They can sign in right away.
 9. **Back up anyway:** use **Export** (download icon, top bar) now and then and keep the file safe; **Import** (upload icon) restores it on any browser.
 
 ## Stack
@@ -85,4 +83,16 @@ Two environments, both on GitHub Pages:
 2. Test on Staging. Its projects are separate, so testing never touches real data.
 3. Open **Actions › Deploy to Production › Run workflow**. Leave _Commit_ empty to ship exactly the version on Staging (the last successful Staging deploy), or enter a commit SHA to ship or roll back to a specific version. It runs the tests, builds with `VITE_APP_ENV=production` and pushes to `pm-console-app`; the site updates about a minute later.
 
-The workflow writes to `pm-console-app` with a deploy key stored as the `PRODUCTION_DEPLOY_KEY` secret. The build reads `VITE_APP_ENV` (`production`, otherwise Staging) to choose the base path, storage keys, data file and the Staging badge — see `src/lib/env.ts`. Both sites share the GitHub sync token (same browser origin), so connecting one connects the other.
+The workflow writes to `pm-console-app` with a deploy key stored as the `PRODUCTION_DEPLOY_KEY` secret. The build reads `VITE_APP_ENV` (`production`, otherwise Staging) to choose the base path, storage keys, data file and the Staging badge — see `src/lib/env.ts`. `VITE_API_URL` and `VITE_GOOGLE_CLIENT_ID` (both public) come from `.env`.
+
+### PM Console API (`/worker`)
+
+A Cloudflare Worker that both sites use. It verifies Google sign-ins, issues 30-day sessions, checks each person's role on every request (`users.json` in the data repository; `OWNER_EMAIL` is always an admin), and reads and writes `projects.json` / `staging/projects.json`. The only GitHub token lives in its secrets, never in a browser.
+
+Setup (once):
+
+1. Google Cloud › Google Auth Platform: create a **Web application** client with JavaScript origins `https://artemiivarta.github.io` and `http://localhost:5173`; publish the app. Put the client ID in `.env` and `worker/wrangler.toml` (`GOOGLE_CLIENT_ID`).
+2. Cloudflare: `npx wrangler login`, then `npm run worker:deploy` and put the printed `*.workers.dev` URL in `.env` (`VITE_API_URL`).
+3. Secrets: `npx wrangler secret put GITHUB_TOKEN --config worker/wrangler.toml` (fine-grained token, Contents read and write on `pm-console-data` only) and `npx wrangler secret put SESSION_SECRET --config worker/wrangler.toml` (a long random string).
+
+Redeploy the API with `npm run worker:deploy` after changing `/worker`.

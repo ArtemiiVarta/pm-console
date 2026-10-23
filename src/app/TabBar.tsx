@@ -1,12 +1,15 @@
 import { NavLink } from 'react-router-dom'
 import { navTabs } from '@/app/navigation'
+import { selectIsAdmin, useAuth } from '@/features/auth/useAuth'
 import { cn } from '@/lib/utils'
 
 export function TabBar() {
+  const isAdmin = useAuth(selectIsAdmin)
+  const tabs = navTabs.filter((tab) => !tab.adminOnly || isAdmin)
   return (
     <nav aria-label="Main" className="border-b bg-surface">
       <div className="mx-auto flex max-w-7xl gap-1 overflow-x-auto px-6">
-        {navTabs.map(({ path, label, icon: Icon, end }) => (
+        {tabs.map(({ path, label, icon: Icon, end }) => (
           <NavLink
             key={path}
             to={path}

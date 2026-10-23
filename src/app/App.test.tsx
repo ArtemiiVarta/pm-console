@@ -1,11 +1,11 @@
 import { render, screen } from '@testing-library/react'
 import { App } from '@/app/App'
-import { useAuth } from '@/features/auth/useAuth'
+import { signInForTest } from '@/test/auth'
 
 describe('App', () => {
   beforeEach(() => {
     window.location.hash = ''
-    useAuth.getState().signIn()
+    signInForTest()
   })
 
   it('opens the Projects page by default', async () => {

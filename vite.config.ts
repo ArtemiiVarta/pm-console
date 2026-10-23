@@ -17,5 +17,10 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
     css: false,
+    // Placeholder API and Google client for tests; nothing real is contacted.
+    env: {
+      VITE_API_URL: 'https://api.test',
+      VITE_GOOGLE_CLIENT_ID: 'test-client.apps.googleusercontent.com',
+    },
   },
 })
