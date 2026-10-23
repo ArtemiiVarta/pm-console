@@ -1,6 +1,8 @@
 # PM Console
 
-Project management, planning and monitoring console for SAP-style consulting engagements. Single-user, runs entirely in the browser. Data is kept in `localStorage` and, optionally, synced to a private GitHub repository so it follows you across computers.
+Project management, planning and monitoring console for SAP-style consulting engagements. A small team signs in with Google and works on the same projects, which are saved continuously to a private GitHub repository.
+
+**Specification:** [docs/SPECIFICATION.md](docs/SPECIFICATION.md) — what the console does, its architecture, business rules, data model, API and security, at a high level.
 
 **Production:** https://artemiivarta.github.io/pm-console-app/ — the tested version, for real projects.
 **Staging:** https://artemiivarta.github.io/pm-console/ — every change lands here first for testing (marked with a **Staging** badge).
