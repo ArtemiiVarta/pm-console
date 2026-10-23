@@ -52,6 +52,10 @@ npm run dev
 
 Open the URL Vite prints (http://localhost:5173/pm-console/).
 
+## Local testing
+
+`npm run dev` adds **Test admin** and **Test user** buttons to the sign-in page. They sign in without Google against an in-browser stand-in for the API (projects and people are kept in that browser's storage), so every page, the Admin tab and sync can be tried with test data. This mode exists only in the dev server; Staging and Production builds do not contain it.
+
 ## Scripts
 
 | Script               | What it does                           |

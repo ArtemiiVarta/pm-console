@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
-import { AlertCircle, Info, LayoutDashboard, Loader2 } from 'lucide-react'
+import { AlertCircle, FlaskConical, Info, LayoutDashboard, Loader2, ShieldCheck, User } from 'lucide-react'
 import { Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { useTheme } from 'next-themes'
+import { ActionButton } from '@/components/ActionButton'
 import { loadGoogleIdentity, type GoogleCredentialResponse } from '@/features/auth/googleIdentity'
 import type { LoginRedirectState } from '@/features/auth/RequireAuth'
 import { startSession } from '@/features/auth/session'
@@ -110,6 +111,10 @@ export function LoginPage() {
           </p>
         )}
 
+        {import.meta.env.DEV && (
+          <LocalTestSignIn onSignedIn={() => navigate(from ?? DEFAULT_ROUTE, { replace: true })} />
+        )}
+
         {error && (
           <p role="alert" className="flex items-start gap-2 text-sm text-danger">
             <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
@@ -118,5 +123,42 @@ export function LoginPage() {
         )}
       </section>
     </main>
+  )
+}
+
+/** npm run dev only: sign in as a test person against an in-browser stand-in for the API. */
+function LocalTestSignIn({ onSignedIn }: { onSignedIn: () => void }) {
+  const signInAs = async (role: 'admin' | 'user') => {
+    const { createTestSession } = await import('@/features/dev/mockApi')
+    startSession(createTestSession(role))
+    onSignedIn()
+  }
+  return (
+    <div className="flex w-full flex-col gap-2 rounded-lg border border-dashed border-warning/50 p-3">
+      <p className="flex items-center gap-2 text-xs font-medium text-warning">
+        <FlaskConical className="h-3.5 w-3.5" aria-hidden />
+        Local testing (this computer only, test data)
+      </p>
+      <div className="flex gap-2">
+        <ActionButton
+          variant="outline"
+          size="sm"
+          icon={ShieldCheck}
+          tooltip="Sign in as a test admin; data stays in this browser"
+          onClick={() => void signInAs('admin')}
+        >
+          Test admin
+        </ActionButton>
+        <ActionButton
+          variant="outline"
+          size="sm"
+          icon={User}
+          tooltip="Sign in as a test user without the Admin tab; data stays in this browser"
+          onClick={() => void signInAs('user')}
+        >
+          Test user
+        </ActionButton>
+      </div>
+    </div>
   )
 }

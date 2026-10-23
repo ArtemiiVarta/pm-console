@@ -16,6 +16,12 @@ try {
   // Storage blocked: nothing to remove.
 }
 
+// Local test mode (npm run dev only): keep answering API calls after a reload.
+if (import.meta.env.DEV) {
+  const { restoreMockApi } = await import('@/features/dev/mockApi')
+  restoreMockApi()
+}
+
 createRoot(root).render(
   <StrictMode>
     <App />

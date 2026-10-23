@@ -27,9 +27,9 @@ import {
 import { fieldAria } from '@/lib/fieldAria'
 import { formatTimestampDate } from '@/lib/format'
 
-const ROLES: { value: Role; label: string; hint: string }[] = [
-  { value: 'user', label: 'User', hint: 'Uses the console' },
-  { value: 'admin', label: 'Admin', hint: 'Also manages people' },
+const ROLES: { value: Role; label: string }[] = [
+  { value: 'user', label: 'User' },
+  { value: 'admin', label: 'Admin' },
 ]
 
 const personSchema = z.object({
@@ -100,11 +100,7 @@ export function AdminPage() {
         title="Admin"
         description="Who can sign in to PM Console (Staging and Production) and what they can do."
       />
-      <SectionCard
-        icon={UserPlus}
-        title="Add a person"
-        description="They sign in with this Google account. Admins can also manage people."
-      >
+      <SectionCard icon={UserPlus} title="Add a person" description="They sign in with this Google account.">
         <AddPersonForm
           existing={people?.users ?? []}
           owner={people?.owner ?? ''}
@@ -290,7 +286,7 @@ function AddPersonForm({
           {...fieldAria('person-email', errors.email?.message, false)}
         />
       </FormField>
-      <FormField id="person-role" label="Role">
+      <FormField id="person-role" label="Role" helper="Admins can also manage people.">
         <Controller
           control={control}
           name="role"
@@ -302,7 +298,7 @@ function AddPersonForm({
               <SelectContent>
                 {ROLES.map((role) => (
                   <SelectItem key={role.value} value={role.value}>
-                    {role.label} · <span className="text-muted">{role.hint}</span>
+                    {role.label}
                   </SelectItem>
                 ))}
               </SelectContent>
