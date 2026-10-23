@@ -25,7 +25,7 @@ import { todayISO } from '@/lib/dates'
 import { fieldAria } from '@/lib/fieldAria'
 import { formatDate } from '@/lib/format'
 import { getPhaseColor, MILESTONE_COLOR } from '@/lib/palette'
-import { getNextPhaseStart, getPhaseEndDate } from '@/lib/schedule'
+import { getNextPhaseStart, getPhaseEndDate, sortPhases } from '@/lib/schedule'
 import { getChildren } from '@/lib/scheduleTree'
 import { useAppStore } from '@/store/useAppStore'
 import type { DurationUnit, Milestone, Phase, ScheduleItem, ScheduleItemKind } from '@/store/types'
@@ -37,6 +37,42 @@ export type ScheduleDialogMode =
   | { kind: 'edit-phase'; phase: Phase }
   | { kind: 'edit-item'; item: ScheduleItem }
   | { kind: 'edit-milestone'; milestone: Milestone }
+  /** From the top Add menu: the dialog asks where to put it ("Under"). */
+  | { kind: 'add-under'; type: 'task' | 'sub-task' | 'milestone' }
+
+/** Concrete modes the form works with (an "add-under" resolves to one of these). */
+type FormMode = Exclude<ScheduleDialogMode, { kind: 'add-under' }>
+
+const PROJECT_LEVEL = ''
+
+interface UnderOption {
+  value: string
+  label: string
+}
+
+/** Where a new item can go: phases for tasks, tasks for sub-tasks, any of them (or the project) for milestones. */
+function getUnderOptions(
+  type: 'task' | 'sub-task' | 'milestone',
+  phases: Phase[],
+  items: ScheduleItem[],
+): UnderOption[] {
+  const ordered = sortPhases(phases)
+  const phaseOptions = ordered.map((phase) => ({ value: phase.id, label: `Phase: ${phase.name}` }))
+  const taskOptions = ordered.flatMap((phase) =>
+    getChildren(items, phase.id)
+      .filter((item) => item.kind === 'task')
+      .map((task) => ({ value: task.id, label: `Task: ${phase.name} › ${task.name}` })),
+  )
+  if (type === 'task') return phaseOptions
+  if (type === 'sub-task') return taskOptions
+  return [{ value: PROJECT_LEVEL, label: 'Project (not under a phase)' }, ...phaseOptions, ...taskOptions]
+}
+
+function resolveMode(mode: ScheduleDialogMode, under: string): FormMode {
+  if (mode.kind !== 'add-under') return mode
+  if (mode.type === 'milestone' && under === PROJECT_LEVEL) return { kind: 'add', type: 'project-milestone' }
+  return { kind: 'add', type: mode.type === 'milestone' ? 'milestone' : 'task', parentId: under }
+}
 
 const schema = z.object({
   name: z.string().trim().min(1, 'Enter a name').max(80, 'Use 80 characters or fewer'),
@@ -69,7 +105,17 @@ export function ScheduleItemDialog({ mode, onClose }: Props) {
   if (mode && mode !== shown) setShown(mode)
   const phases = useAppStore((state) => state.phases)
   const items = useAppStore((state) => state.items)
-  const info = shown ? describe(shown, phases, items) : null
+
+  // "Under" choice for add-under; reset to the first option each time the dialog opens.
+  const [under, setUnder] = useState(PROJECT_LEVEL)
+  const [underFor, setUnderFor] = useState<ScheduleDialogMode | null>(null)
+  const options = shown?.kind === 'add-under' ? getUnderOptions(shown.type, phases, items) : []
+  if (shown && shown !== underFor) {
+    setUnderFor(shown)
+    setUnder(options[0]?.value ?? PROJECT_LEVEL)
+  }
+  const formMode = shown ? resolveMode(shown, under) : null
+  const info = formMode ? describe(formMode, phases, items) : null
 
   return (
     <Dialog open={mode !== null} onOpenChange={(open) => !open && onClose()}>
@@ -80,7 +126,34 @@ export function ScheduleItemDialog({ mode, onClose }: Props) {
               <DialogTitle>{info.title}</DialogTitle>
               <DialogDescription>{info.description}</DialogDescription>
             </DialogHeader>
-            <ScheduleItemForm key={formKey(shown)} mode={shown} info={info} onDone={onClose} />
+            {shown.kind === 'add-under' && (
+              <FormField id="item-under" label="Under" helper="Where it goes in the schedule.">
+                <Select
+                  value={under === PROJECT_LEVEL ? '__project__' : under}
+                  onValueChange={(value) => setUnder(value === '__project__' ? PROJECT_LEVEL : value)}
+                >
+                  <SelectTrigger id="item-under">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {options.map((option) => (
+                      <SelectItem key={option.value || '__project__'} value={option.value || '__project__'}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </FormField>
+            )}
+            {formMode && (
+              <ScheduleItemForm
+                // Typed values survive changing "Under" (same key); other modes remount per item.
+                key={shown.kind === 'add-under' ? `under-${shown.type}` : formKey(formMode)}
+                mode={formMode}
+                info={info}
+                onDone={onClose}
+              />
+            )}
           </>
         )}
       </DialogContent>
@@ -99,14 +172,14 @@ interface Described {
   childCount: number
 }
 
-function formKey(mode: ScheduleDialogMode) {
+function formKey(mode: FormMode) {
   if (mode.kind === 'add') return `add-${mode.type}-${'parentId' in mode ? mode.parentId : ''}`
   if (mode.kind === 'edit-phase') return mode.phase.id
   if (mode.kind === 'edit-item') return mode.item.id
   return mode.milestone.id
 }
 
-function describe(mode: ScheduleDialogMode, phases: Phase[], items: ScheduleItem[]): Described | null {
+function describe(mode: FormMode, phases: Phase[], items: ScheduleItem[]): Described | null {
   const parentOf = (parentId: string): Described['parent'] => {
     const phase = phases.find((p) => p.id === parentId)
     if (phase) {
@@ -189,15 +262,7 @@ function describe(mode: ScheduleDialogMode, phases: Phase[], items: ScheduleItem
   }
 }
 
-function ScheduleItemForm({
-  mode,
-  info,
-  onDone,
-}: {
-  mode: ScheduleDialogMode
-  info: Described
-  onDone: () => void
-}) {
+function ScheduleItemForm({ mode, info, onDone }: { mode: FormMode; info: Described; onDone: () => void }) {
   const store = useAppStore()
   const durationMode = store.project.durationMode
 
@@ -255,8 +320,23 @@ function ScheduleItemForm({
     register,
     control,
     handleSubmit,
+    setValue,
+    getFieldState,
     formState: { errors },
   } = useForm<Values>({ resolver: zodResolver(schema), defaultValues: defaults })
+
+  // "Under" changed (add from the top menu): take the new parent's adjust options and start date.
+  const parentId = info.parent?.id ?? null
+  const [seenParent, setSeenParent] = useState(parentId)
+  if (parentId !== seenParent) {
+    setSeenParent(parentId)
+    setValue('adjustParentStart', info.parent?.fitStart ?? false)
+    setValue('adjustParentEnd', info.parent?.fitEnd ?? false)
+    const parentStart =
+      store.phases.find((p) => p.id === parentId)?.startDate ??
+      store.items.find((i) => i.id === parentId)?.startDate
+    if (parentStart && !getFieldState('startDate').isDirty) setValue('startDate', parentStart)
+  }
 
   const [startDate, duration, durationUnit, fitStart, fitEnd] = useWatch({
     control,

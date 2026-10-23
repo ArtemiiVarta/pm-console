@@ -19,6 +19,12 @@ Object.defineProperty(window, 'matchMedia', {
   })),
 })
 
+// jsdom lacks pointer capture and scrollIntoView, which Radix Select uses when opening.
+Element.prototype.hasPointerCapture ??= () => false
+Element.prototype.setPointerCapture ??= () => {}
+Element.prototype.releasePointerCapture ??= () => {}
+Element.prototype.scrollIntoView ??= () => {}
+
 afterEach(() => {
   cleanup()
   // In-memory stores outlive a render; reset them so tests stay independent.

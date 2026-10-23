@@ -122,10 +122,13 @@ export function GanttSection() {
       return next
     })
 
+  const hasTasks = items.some(
+    (item) => item.kind === 'task' && phases.some((phase) => phase.id === item.parentId),
+  )
   const addMenu = (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <ActionButton icon={Plus} tooltip="Add a phase or a project milestone">
+        <ActionButton icon={Plus} tooltip="Add a phase, task, sub-task or milestone">
           Add
           <ChevronDown className="h-4 w-4 opacity-70" aria-hidden />
         </ActionButton>
@@ -135,7 +138,21 @@ export function GanttSection() {
           <CalendarRange className="h-4 w-4" aria-hidden />
           Phase
         </DropdownMenuItem>
-        <DropdownMenuItem onSelect={() => setDialog({ kind: 'add', type: 'project-milestone' })}>
+        <DropdownMenuItem
+          disabled={phases.length === 0}
+          onSelect={() => setDialog({ kind: 'add-under', type: 'task' })}
+        >
+          <ListPlus className="h-4 w-4" aria-hidden />
+          Task{phases.length === 0 ? ' (add a phase first)' : ''}
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          disabled={!hasTasks}
+          onSelect={() => setDialog({ kind: 'add-under', type: 'sub-task' })}
+        >
+          <ListPlus className="h-4 w-4" aria-hidden />
+          Sub-task{hasTasks ? '' : ' (add a task first)'}
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => setDialog({ kind: 'add-under', type: 'milestone' })}>
           <Star className="h-4 w-4" aria-hidden />
           Milestone
         </DropdownMenuItem>
@@ -149,7 +166,7 @@ export function GanttSection() {
     <SectionCard
       icon={GanttChart}
       title="Project schedule"
-      description="Phases, tasks, sub-tasks and milestones (★). Drag bars to move them, drag their edges to change dates; use ⋯ to add tasks and milestones under a phase or task."
+      description="Phases, tasks, sub-tasks and milestones (★). Use + on a row (or Add) to add tasks and milestones under it. Drag bars to move them, drag their edges to change dates."
       actions={
         isEmpty ? undefined : (
           <>
@@ -277,6 +294,10 @@ export function GanttSection() {
                         : formatDate(row.end).slice(0, 6)}
                     </span>
                     <span className="flex w-16 shrink-0 justify-end">
+                      <AddChildButton
+                        row={row}
+                        onAdd={(type) => setDialog({ kind: 'add', type, parentId: row.id })}
+                      />
                       <RowMenu
                         row={row}
                         onEdit={() => openEdit(row)}
@@ -386,6 +407,39 @@ function FitBadge({ start, end }: { start: boolean; end: boolean }) {
       </TooltipTrigger>
       <TooltipContent>{text}</TooltipContent>
     </Tooltip>
+  )
+}
+
+/** Visible "+" on phases and tasks that can take children: add a task or a milestone under it. */
+function AddChildButton({ row, onAdd }: { row: GanttRow; onAdd: (type: 'task' | 'milestone') => void }) {
+  const canHaveChildren = row.kind === 'phase' || (row.kind === 'task' && row.level < MAX_LEVEL)
+  if (!canHaveChildren) return <span className="w-7 shrink-0" aria-hidden />
+  const sub = row.kind === 'task'
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <IconButton
+          icon={Plus}
+          size="icon-sm"
+          label={`Add under ${row.name}`}
+          tooltip={
+            sub
+              ? 'Add a sub-task or sub-milestone under this task'
+              : 'Add a task or milestone under this phase'
+          }
+        />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem onSelect={() => onAdd('task')}>
+          <ListPlus className="h-4 w-4" aria-hidden />
+          {sub ? 'Add sub-task' : 'Add task'}
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => onAdd('milestone')}>
+          <Star className="h-4 w-4" aria-hidden />
+          {sub ? 'Add sub-milestone' : 'Add milestone'}
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }
 

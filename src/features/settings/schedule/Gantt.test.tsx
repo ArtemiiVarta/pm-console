@@ -240,4 +240,79 @@ describe('Project schedule (Gantt)', () => {
       'Explore',
     ])
   })
+
+  it('has a visible + button on phase and task rows to add children', async () => {
+    const user = userEvent.setup()
+    const phaseId = seedPhase()
+    renderSchedule()
+
+    await user.click(await screen.findByRole('button', { name: 'Add under Explore' }))
+    await user.click(await screen.findByRole('menuitem', { name: 'Add task' }))
+    await user.type(dialog().getByLabelText(/Task name/), 'Design')
+    await user.click(dialog().getByRole('button', { name: 'Add task' }))
+    const task = store().items.find((i) => i.name === 'Design')
+    expect(task).toMatchObject({ parentId: phaseId, kind: 'task' })
+
+    await user.click(screen.getByRole('button', { name: 'Add under Design' }))
+    await user.click(await screen.findByRole('menuitem', { name: 'Add sub-milestone' }))
+    await user.type(dialog().getByLabelText(/Milestone name/), 'Design approved')
+    await user.click(dialog().getByRole('button', { name: 'Add sub-milestone' }))
+    expect(store().items.find((i) => i.name === 'Design approved')).toMatchObject({
+      parentId: task?.id,
+      kind: 'milestone',
+    })
+
+    // Sub-tasks get no + (they cannot have children).
+    await user.click(screen.getByRole('button', { name: 'Add under Design' }))
+    await user.click(await screen.findByRole('menuitem', { name: 'Add sub-task' }))
+    await user.type(dialog().getByLabelText(/Sub-task name/), 'Mock-ups')
+    await user.click(dialog().getByRole('button', { name: 'Add sub-task' }))
+    expect(screen.queryByRole('button', { name: 'Add under Mock-ups' })).not.toBeInTheDocument()
+  })
+
+  it('adds tasks, sub-tasks and milestones from the top Add menu, choosing where they go', async () => {
+    const user = userEvent.setup()
+    seedPhase()
+    const realizeId = store().addPhase({
+      name: 'Realize',
+      startDate: '2026-11-02',
+      duration: 4,
+      durationUnit: 'weeks',
+    })
+    renderSchedule()
+
+    // Sub-task needs a task first.
+    await user.click(await screen.findByRole('button', { name: 'Add' }))
+    expect(await screen.findByRole('menuitem', { name: /Sub-task \(add a task first\)/ })).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    )
+    await user.click(screen.getByRole('menuitem', { name: 'Task' }))
+
+    // Under: pick the second phase; the start date follows it.
+    await user.click(dialog().getByRole('combobox', { name: 'Under' }))
+    await user.click(await screen.findByRole('option', { name: 'Phase: Realize' }))
+    expect(dialog().getByRole('button', { name: 'Start date' })).toHaveTextContent('02 Nov 2026')
+    expect(dialog().getByText(/Adjust phase “Realize” to its children/)).toBeInTheDocument()
+    await user.type(dialog().getByLabelText(/Task name/), 'Build')
+    await user.click(dialog().getByRole('button', { name: 'Add task' }))
+    const build = store().items.find((i) => i.name === 'Build')
+    expect(build).toMatchObject({ parentId: realizeId, kind: 'task', startDate: '2026-11-02' })
+
+    // Sub-task: Under lists tasks.
+    await user.click(screen.getByRole('button', { name: 'Add' }))
+    await user.click(await screen.findByRole('menuitem', { name: 'Sub-task' }))
+    expect(dialog().getByRole('combobox', { name: 'Under' })).toHaveTextContent('Task: Realize › Build')
+    await user.type(dialog().getByLabelText(/Sub-task name/), 'Interfaces')
+    await user.click(dialog().getByRole('button', { name: 'Add sub-task' }))
+    expect(store().items.find((i) => i.name === 'Interfaces')).toMatchObject({ parentId: build?.id })
+
+    // Milestone: defaults to project level.
+    await user.click(screen.getByRole('button', { name: 'Add' }))
+    await user.click(await screen.findByRole('menuitem', { name: 'Milestone' }))
+    expect(dialog().getByRole('combobox', { name: 'Under' })).toHaveTextContent('Project (not under a phase)')
+    await user.type(dialog().getByLabelText(/Milestone name/), 'Go-live')
+    await user.click(dialog().getByRole('button', { name: 'Add milestone' }))
+    expect(store().milestones.map((m) => m.name)).toEqual(['Go-live'])
+  })
 })
