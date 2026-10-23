@@ -157,8 +157,8 @@ export function RosterSection() {
 
   const summary = useMemo(() => getForecastSummary({ project, phases, members }), [project, phases, members])
   const rows = useMemo(
-    () => getRosterRows(members, summary.weeks, project.standardHoursPerWeek),
-    [members, summary.weeks, project.standardHoursPerWeek],
+    () => getRosterRows(members, summary.weeks, project.standardHoursPerWeek, summary.range),
+    [members, summary.weeks, summary.range, project.standardHoursPerWeek],
   )
   const roles = useMemo(() => getRoles(members), [members])
   const activeFilter = roleFilter !== ALL_ROLES && roles.includes(roleFilter) ? roleFilter : ALL_ROLES

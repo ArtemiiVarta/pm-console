@@ -8,7 +8,7 @@ import {
   max,
   min,
 } from 'date-fns'
-import { parseISODate, toISODate, WEEK_STARTS_ON } from '@/lib/dates'
+import { addDaysISO, parseISODate, toISODate, WEEK_STARTS_ON } from '@/lib/dates'
 import type { DurationMode, ISODate, Phase } from '@/store/types'
 
 export interface DateRange {
@@ -58,6 +58,23 @@ export function getProjectWeeks(range: DateRange | null): ISODate[] {
   const end = parseISODate(range.end)
   if (end < start) return []
   return eachWeekOfInterval({ start, end }, { weekStartsOn: WEEK_STARTS_ON }).map(toISODate)
+}
+
+/** Standard hours cover a Mon–Fri working week, whatever the duration mode. */
+export const WORKING_DAYS_PER_WEEK = 5
+
+/**
+ * Share (0–1) of the Mon–Fri days of the week starting `weekStart` (a Monday) that fall within
+ * `from`–`to`, both inclusive and optional. A project starting on a Thursday gets 2/5 of its
+ * first week.
+ */
+export function getWeekWorkingShare(weekStart: ISODate, from?: ISODate, to?: ISODate): number {
+  let days = 0
+  for (let offset = 0; offset < WORKING_DAYS_PER_WEEK; offset += 1) {
+    const day = addDaysISO(weekStart, offset)
+    if ((!from || day >= from) && (!to || day <= to)) days += 1
+  }
+  return days / WORKING_DAYS_PER_WEEK
 }
 
 /** Phases in table order. */

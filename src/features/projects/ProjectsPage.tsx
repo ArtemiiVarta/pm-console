@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import {
   AlertTriangle,
+  ArrowLeftRight,
   CheckCircle2,
   FolderOpen,
   LayoutGrid,
@@ -18,14 +19,17 @@ import { PageHeader } from '@/components/PageHeader'
 import { SectionCard } from '@/components/SectionCard'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { ExchangeRatesDialog } from '@/features/projects/ExchangeRatesDialog'
 import { usePendingAllocation } from '@/features/settings/team/assignment/usePendingAllocation'
 import { formatCurrency, formatDate, formatPercent } from '@/lib/format'
+import { convertCurrency, hasMixedCurrencies } from '@/lib/fx'
 import { getProjectSummaries, type ProjectSummary } from '@/lib/projects'
 import { getStatusLabel, STATUS_CLASSES } from '@/lib/projectStatus'
 import { getTileWeights, squarify } from '@/lib/treemap'
 import { cn } from '@/lib/utils'
 import { useAppStore } from '@/store/useAppStore'
-import type { ProjectStatus } from '@/store/types'
+import { usePortfolioPrefs } from '@/store/usePortfolioPrefs'
+import type { Currency, ProjectStatus } from '@/store/types'
 
 const STATUS_ICON: Record<ProjectStatus, LucideIcon> = {
   green: CheckCircle2,
@@ -43,10 +47,24 @@ export function ProjectsPage() {
   const deleteProject = useAppStore((state) => state.deleteProject)
   const navigate = useNavigate()
   const [deleting, setDeleting] = useState<ProjectSummary | null>(null)
+  const [ratesOpen, setRatesOpen] = useState(false)
+  const reportingCurrency = usePortfolioPrefs((state) => state.reportingCurrency)
+  const fxRates = usePortfolioPrefs((state) => state.fxRates)
+  const fxRatesAsOf = usePortfolioPrefs((state) => state.fxRatesAsOf)
 
-  const projects = useMemo(() => getProjectSummaries(library), [library])
+  const projects = useMemo(
+    () =>
+      getProjectSummaries(library, (amount, currency) =>
+        convertCurrency(amount, currency, reportingCurrency, fxRates),
+      ),
+    [library, reportingCurrency, fxRates],
+  )
+  const mixed = hasMixedCurrencies(projects.map((project) => project.currency))
+  /** Native amount, with CA$ / US$ when projects use different currencies. */
+  const money = (value: number, currency: Currency) => formatCurrency(value, currency, 0, { explicit: mixed })
   const tiles = useMemo(() => {
-    const weights = getTileWeights(projects.map((project) => project.revenue))
+    // Revenue in one currency, so a €100k project and a CA$100k project are not drawn the same size.
+    const weights = getTileWeights(projects.map((project) => project.reportingRevenue))
     return squarify(
       projects.map((project, index) => ({ ...project, value: weights[index] ?? 1 })),
       100,
@@ -83,7 +101,50 @@ export function ProjectsPage() {
         actions={newButton}
       />
 
-      <SectionCard icon={LayoutGrid} title="Portfolio" description="Larger tile = higher forecast revenue.">
+      <SectionCard
+        icon={LayoutGrid}
+        title="Portfolio"
+        description={
+          mixed
+            ? `Larger tile = higher forecast revenue, compared in ${reportingCurrency}.`
+            : 'Larger tile = higher forecast revenue.'
+        }
+        actions={
+          mixed ? (
+            <ActionButton
+              variant="outline"
+              size="sm"
+              icon={ArrowLeftRight}
+              tooltip="Set the currency and exchange rates used to compare projects"
+              onClick={() => setRatesOpen(true)}
+            >
+              Exchange rates
+            </ActionButton>
+          ) : undefined
+        }
+      >
+        {mixed && (
+          <p className="text-xs text-muted">
+            {fxRatesAsOf
+              ? `Rates entered ${formatDate(fxRatesAsOf)}`
+              : 'Example rates — update them to match your finance team'}
+            {': '}
+            {(['USD', 'EUR', 'GBP'] as const)
+              .filter((code) => code !== reportingCurrency)
+              .map(
+                (code) =>
+                  `1 ${code} = ${formatCurrency(convertCurrency(1, code, reportingCurrency, fxRates), reportingCurrency, 2, { explicit: true })}`,
+              )
+              .concat(
+                reportingCurrency === 'CAD'
+                  ? []
+                  : [
+                      `1 CAD = ${formatCurrency(convertCurrency(1, 'CAD', reportingCurrency, fxRates), reportingCurrency, 2, { explicit: true })}`,
+                    ],
+              )
+              .join(' · ')}
+          </p>
+        )}
         <div className="flex flex-wrap gap-3 text-xs text-muted" aria-label="Legend">
           {(['green', 'amber', 'red'] as const).map((status) => {
             const Icon = STATUS_ICON[status]
@@ -106,6 +167,7 @@ export function ProjectsPage() {
               key={tile.id}
               project={tile}
               rect={tile}
+              money={money}
               active={tile.id === activeProjectId}
               onOpen={() => open(tile.id)}
             />
@@ -155,7 +217,12 @@ export function ProjectsPage() {
                     )}
                   </TableCell>
                   <TableCell className="text-right tabular-nums">
-                    {formatCurrency(project.revenue, project.currency)}
+                    {money(project.revenue, project.currency)}
+                    {mixed && project.currency !== reportingCurrency && project.revenue > 0 && (
+                      <div className="text-xs text-muted">
+                        ≈ {money(project.reportingRevenue, reportingCurrency)}
+                      </div>
+                    )}
                   </TableCell>
                   <TableCell className="text-right tabular-nums">
                     {project.revenue > 0 ? formatPercent(project.marginPct) : '—'}
@@ -199,6 +266,8 @@ export function ProjectsPage() {
           toast.success(`“${deleting.name}” deleted`)
         }}
       />
+
+      <ExchangeRatesDialog open={ratesOpen} onOpenChange={setRatesOpen} />
     </>
   )
 }
@@ -207,11 +276,13 @@ function ProjectTile({
   project,
   rect,
   active,
+  money,
   onOpen,
 }: {
   project: ProjectSummary
   rect: { x: number; y: number; w: number; h: number }
   active: boolean
+  money: (value: number, currency: Currency) => string
   onOpen: () => void
 }) {
   const Icon = STATUS_ICON[project.status]
@@ -230,7 +301,7 @@ function ProjectTile({
           <button
             type="button"
             onClick={onOpen}
-            aria-label={`${project.name}, status ${getStatusLabel(project.status)}, forecast revenue ${formatCurrency(project.revenue, project.currency)}${project.rationale ? `. ${project.rationale}` : ''}. Open project`}
+            aria-label={`${project.name}, status ${getStatusLabel(project.status)}, forecast revenue ${money(project.revenue, project.currency)}${project.rationale ? `. ${project.rationale}` : ''}. Open project`}
             className={cn(
               'flex h-full w-full flex-col items-center justify-center gap-1 overflow-hidden rounded-md p-2 text-center text-white shadow-sm transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-foreground',
               STATUS_CLASSES[project.status].tile,
@@ -246,7 +317,7 @@ function ProjectTile({
                   <span className="max-w-full truncate text-xs opacity-90">{project.client}</span>
                 )}
                 <span className="text-sm font-medium tabular-nums opacity-95">
-                  {formatCurrency(project.revenue, project.currency)}
+                  {money(project.revenue, project.currency)}
                 </span>
                 <span className="flex items-center gap-1 text-xs opacity-90">
                   <Icon className="h-3.5 w-3.5" aria-hidden />
@@ -259,8 +330,7 @@ function ProjectTile({
         <TooltipContent className="max-w-xs">
           <p className="font-medium">{project.name}</p>
           <p>
-            {getStatusLabel(project.status)} · {formatCurrency(project.revenue, project.currency)} forecast
-            revenue
+            {getStatusLabel(project.status)} · {money(project.revenue, project.currency)} forecast revenue
           </p>
           {project.rationale && <p className="opacity-80">{project.rationale}</p>}
         </TooltipContent>

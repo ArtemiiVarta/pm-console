@@ -5,6 +5,7 @@ import {
   getPhaseIssues,
   getProjectRange,
   getProjectWeeks,
+  getWeekWorkingShare,
   sortPhases,
 } from '@/lib/schedule'
 import type { DurationUnit, Phase } from '@/store/types'
@@ -172,5 +173,29 @@ describe('pinned end date', () => {
   it('wins over the duration and never falls before the start', () => {
     expect(getPhaseEndDate({ ...span(MON, 2, 'weeks'), endDate: '2026-10-28' }, 'working')).toBe('2026-10-28')
     expect(getPhaseEndDate({ ...span(WED, 1), endDate: MON }, 'calendar')).toBe(WED)
+  })
+})
+
+describe('getWeekWorkingShare', () => {
+  it('is a full week without bounds, or when the range covers Mon–Fri', () => {
+    expect(getWeekWorkingShare(MON)).toBe(1)
+    expect(getWeekWorkingShare(MON, MON, FRI)).toBe(1)
+    expect(getWeekWorkingShare(MON, '2026-10-01', '2026-12-31')).toBe(1)
+  })
+
+  it('counts only the working days inside the range', () => {
+    expect(getWeekWorkingShare(MON, '2026-10-22')).toBe(2 / 5) // starts Thursday
+    expect(getWeekWorkingShare(MON, undefined, WED)).toBe(3 / 5) // ends Wednesday
+    expect(getWeekWorkingShare(MON, WED, WED)).toBe(1 / 5)
+  })
+
+  it('ignores weekends, whatever the range', () => {
+    expect(getWeekWorkingShare(MON, SAT, SUN)).toBe(0)
+    expect(getWeekWorkingShare(MON, MON, SUN)).toBe(1)
+  })
+
+  it('is 0 when the range misses the week', () => {
+    expect(getWeekWorkingShare(MON, '2026-11-02')).toBe(0)
+    expect(getWeekWorkingShare(MON, undefined, '2026-10-16')).toBe(0)
   })
 })

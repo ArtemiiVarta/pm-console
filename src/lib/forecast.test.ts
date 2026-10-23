@@ -3,6 +3,7 @@ import {
   getMemberHours,
   getMemberLoadPct,
   getMemberTotals,
+  getMemberWeekShare,
   getRateMargin,
   getTeamTotals,
   getWeeklyTeamTotals,
@@ -157,5 +158,43 @@ describe('start date', () => {
   it('has no effect without a start date, and flows into totals', () => {
     expect(isBeforeStart(member(), W1)).toBe(false)
     expect(getMemberTotals(member({ startDate: '2026-10-26' }), [W1, W2], STD).hours).toBe(40)
+  })
+})
+
+describe('partial weeks', () => {
+  // Project Thu 22 Oct – Tue 27 Oct: 2 working days in W1, 2 in W2.
+  const range = { start: '2026-10-22', end: '2026-10-27' }
+
+  it('pro-rates hours by the working days inside the project', () => {
+    expect(getMemberWeekShare(member(), W1, range)).toBe(2 / 5)
+    expect(getMemberHours(member(), W1, STD, range)).toBe(16)
+    expect(getMemberHours(member(), W2, STD, range)).toBe(16)
+    expect(getMemberCapacityHours(member({ capacityPct: 50 }), W1, STD, range)).toBe(8)
+  })
+
+  it('keeps the load % as entered; only hours are pro-rated', () => {
+    expect(getMemberLoadPct(member({ defaultLoadPct: 80 }), W1)).toBe(80)
+    expect(getMemberHours(member({ defaultLoadPct: 80 }), W1, STD, range)).toBeCloseTo(12.8)
+  })
+
+  it('uses the later of the project start and the member start date', () => {
+    const late = member({ startDate: '2026-10-23' }) // Friday
+    expect(getMemberWeekShare(late, W1, range)).toBe(1 / 5)
+    expect(getMemberHours(late, W1, STD)).toBe(8) // no project range: start date only
+    expect(getMemberWeekShare(member({ startDate: '2026-10-01' }), W1, range)).toBe(2 / 5)
+  })
+
+  it('flows into member, team and weekly totals', () => {
+    expect(getMemberTotals(member(), [W1, W2], STD, range)).toMatchObject({
+      hours: 32,
+      cost: 3200,
+      revenue: 4800,
+    })
+    expect(getTeamTotals([member(), member({ id: 'n' })], [W1, W2], STD, range).hours).toBe(64)
+    expect(getWeeklyTeamTotals([member()], [W1, W2], STD, range).map((week) => week.hours)).toEqual([16, 16])
+  })
+
+  it('counts a weekend-only start week as 0 hours', () => {
+    expect(getMemberHours(member({ startDate: '2026-10-24' }), W1, STD)).toBe(0)
   })
 })

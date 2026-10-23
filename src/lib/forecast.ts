@@ -1,5 +1,6 @@
 import { addDays } from 'date-fns'
 import { parseISODate, toISODate } from '@/lib/dates'
+import { getWeekWorkingShare, type DateRange } from '@/lib/schedule'
 import type { ForecastTotals, ISODate, TeamMember } from '@/store/types'
 
 export interface MemberTotals extends ForecastTotals {
@@ -41,9 +42,29 @@ export function getMemberLoadPct(member: LoadFields, weekStart: ISODate): number
   return member.weeklyOverrides[weekStart] ?? member.defaultLoadPct
 }
 
-/** loadPct / 100 × standard hours per week. */
-export function getMemberHours(member: LoadFields, weekStart: ISODate, standardHoursPerWeek: number): number {
-  return (getMemberLoadPct(member, weekStart) / 100) * standardHoursPerWeek
+/**
+ * Share (0–1) of the week's working days the member is on the project: inside the project range
+ * and on or after their start date. Without a range only the start date limits it.
+ */
+export function getMemberWeekShare(
+  member: Pick<TeamMember, 'startDate'>,
+  weekStart: ISODate,
+  range?: DateRange | null,
+): number {
+  const starts = [range?.start, member.startDate].filter((date): date is ISODate => Boolean(date))
+  const from = starts.sort().at(-1)
+  return getWeekWorkingShare(weekStart, from, range?.end)
+}
+
+/** loadPct / 100 × standard hours per week × the share of the week the member is on the project. */
+export function getMemberHours(
+  member: LoadFields,
+  weekStart: ISODate,
+  standardHoursPerWeek: number,
+  range?: DateRange | null,
+): number {
+  const share = getMemberWeekShare(member, weekStart, range)
+  return (getMemberLoadPct(member, weekStart) / 100) * standardHoursPerWeek * share
 }
 
 /** Assigned hours × capacityPct / 100. */
@@ -51,8 +72,9 @@ export function getMemberCapacityHours(
   member: LoadFields & Pick<TeamMember, 'capacityPct'>,
   weekStart: ISODate,
   standardHoursPerWeek: number,
+  range?: DateRange | null,
 ): number {
-  return getMemberHours(member, weekStart, standardHoursPerWeek) * (member.capacityPct / 100)
+  return getMemberHours(member, weekStart, standardHoursPerWeek, range) * (member.capacityPct / 100)
 }
 
 /** Hours, capacity, cost, revenue and margin for one member over the given weeks. */
@@ -60,9 +82,10 @@ export function getMemberTotals(
   member: ForecastMember,
   weeks: ISODate[],
   standardHoursPerWeek: number,
+  range?: DateRange | null,
 ): MemberTotals {
   let hours = 0
-  for (const week of weeks) hours += getMemberHours(member, week, standardHoursPerWeek)
+  for (const week of weeks) hours += getMemberHours(member, week, standardHoursPerWeek, range)
   const capacityHours = hours * (member.capacityPct / 100)
   const cost = hours * member.costRate
   const revenue = hours * member.priceRate
@@ -81,11 +104,12 @@ export function getTeamTotals(
   members: (ForecastMember & Pick<TeamMember, 'active'>)[],
   weeks: ISODate[],
   standardHoursPerWeek: number,
+  range?: DateRange | null,
 ): MemberTotals {
   const totals = { hours: 0, capacityHours: 0, cost: 0, revenue: 0 }
   for (const member of members) {
     if (!member.active) continue
-    const memberTotals = getMemberTotals(member, weeks, standardHoursPerWeek)
+    const memberTotals = getMemberTotals(member, weeks, standardHoursPerWeek, range)
     totals.hours += memberTotals.hours
     totals.capacityHours += memberTotals.capacityHours
     totals.cost += memberTotals.cost
@@ -100,12 +124,13 @@ export function getWeeklyTeamTotals(
   members: (ForecastMember & Pick<TeamMember, 'active'>)[],
   weeks: ISODate[],
   standardHoursPerWeek: number,
+  range?: DateRange | null,
 ): WeeklyTeamTotals[] {
   const active = members.filter((member) => member.active)
   return weeks.map((weekStart) => {
     const week = { weekStart, hours: 0, capacityHours: 0, cost: 0, revenue: 0 }
     for (const member of active) {
-      const hours = getMemberHours(member, weekStart, standardHoursPerWeek)
+      const hours = getMemberHours(member, weekStart, standardHoursPerWeek, range)
       week.hours += hours
       week.capacityHours += hours * (member.capacityPct / 100)
       week.cost += hours * member.costRate

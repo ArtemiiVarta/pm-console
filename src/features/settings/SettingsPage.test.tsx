@@ -128,8 +128,10 @@ describe('Project summary tiles', () => {
 
     expect(summary().getByText('21 Oct 2026')).toBeInTheDocument()
     expect(summary().getByText('03 Nov 2026')).toBeInTheDocument()
-    expect(summary().getByText('3 wk')).toBeInTheDocument()
-    expect(summary().getByText('120')).toBeInTheDocument()
+    // Wed 21 Oct – Tue 3 Nov touches 3 Mon–Sun weeks but holds 10 working days.
+    expect(summary().getByText('2 wk')).toBeInTheDocument()
+    expect(summary().getByText('10 working days')).toBeInTheDocument()
+    expect(summary().getByText('80')).toBeInTheDocument()
     expect(summary().getByText('20%')).toBeInTheDocument()
     expect(summary().getByText('Below target (10–25%)')).toBeInTheDocument()
   })

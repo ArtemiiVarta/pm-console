@@ -8,6 +8,7 @@ import { BaselineBar } from '@/features/settings/team/baselines/BaselineBar'
 import { useForecastSource, ViewedBaselineContext } from '@/features/settings/team/forecastSource'
 import { RosterSection } from '@/features/settings/team/RosterSection'
 import { formatCurrency, formatNumber, formatPercent, formatTimestamp } from '@/lib/format'
+import { WORKING_DAYS_PER_WEEK } from '@/lib/schedule'
 import { getForecastSummary, getMarginTone, type ForecastSummary } from '@/lib/summary'
 import { useAppStore } from '@/store/useAppStore'
 import type { Currency, ForecastBaseline } from '@/store/types'
@@ -89,7 +90,7 @@ function NoPhasesNotice() {
 }
 
 function TeamStats({ summary, currency }: { summary: ForecastSummary; currency: Currency }) {
-  const { totals, weeks } = summary
+  const { totals, workingDays } = summary
   const hasRevenue = totals.revenue > 0
   const tone = hasRevenue ? getMarginTone(totals.marginPct) : 'default'
   const toneHint =
@@ -111,7 +112,7 @@ function TeamStats({ summary, currency }: { summary: ForecastSummary; currency: 
         icon={Clock}
         label="Total forecast hours"
         value={formatNumber(totals.hours)}
-        hint={`Over ${weeks.length} week${weeks.length === 1 ? '' : 's'}, active members`}
+        hint={`Over ${formatNumber(workingDays / WORKING_DAYS_PER_WEEK, 1)} week${workingDays === WORKING_DAYS_PER_WEEK ? '' : 's'}, active members`}
       />
       <StatTile
         icon={Cpu}

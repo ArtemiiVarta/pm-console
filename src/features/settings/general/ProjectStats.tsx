@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { CalendarCheck, CalendarClock, Clock, Percent, Timer, Users } from 'lucide-react'
 import { StatTile } from '@/components/StatTile'
 import { formatDate, formatNumber, formatPercent } from '@/lib/format'
+import { WORKING_DAYS_PER_WEEK } from '@/lib/schedule'
 import { getForecastSummary, getMarginTone } from '@/lib/summary'
 import { useAppStore } from '@/store/useAppStore'
 
@@ -13,7 +14,7 @@ export function ProjectStats() {
   const phases = useAppStore((state) => state.phases)
   const members = useAppStore((state) => state.members)
   const summary = useMemo(() => getForecastSummary({ project, phases, members }), [project, phases, members])
-  const { range, weeks, activeMembers, inactiveMembers, totals } = summary
+  const { range, workingDays, activeMembers, inactiveMembers, totals } = summary
   const hasRevenue = totals.revenue > 0
   const marginTone = hasRevenue ? getMarginTone(totals.marginPct) : 'default'
 
@@ -37,8 +38,8 @@ export function ProjectStats() {
       <StatTile
         icon={Timer}
         label="Duration"
-        value={weeks.length > 0 ? `${weeks.length} wk` : NONE}
-        hint="Mon–Sun weeks covered"
+        value={range ? `${formatNumber(workingDays / WORKING_DAYS_PER_WEEK, 1)} wk` : NONE}
+        hint={range ? `${workingDays} working days` : 'Working days, Mon–Fri'}
       />
       <StatTile
         icon={Users}
@@ -50,7 +51,7 @@ export function ProjectStats() {
         icon={Clock}
         label="Forecast hours"
         value={formatNumber(totals.hours)}
-        hint={`At ${formatNumber(project.standardHoursPerWeek, 1)} h per 100% week`}
+        hint={`At ${formatNumber(project.standardHoursPerWeek, 1)} h per 100% week, partial weeks pro-rated`}
       />
       <StatTile
         icon={Percent}

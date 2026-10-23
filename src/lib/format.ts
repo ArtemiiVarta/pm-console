@@ -33,8 +33,21 @@ export function formatPercent(value: number, maximumFractionDigits = 1): string 
   }).format(value)
 }
 
-export function formatCurrency(value: number, currency: Currency, maximumFractionDigits = 0): string {
-  return new Intl.NumberFormat(LOCALE, {
+/** Prefixes that tell the dollar currencies apart when they appear side by side. */
+const EXPLICIT_DOLLAR: Partial<Record<Currency, string>> = { CAD: 'CA$', USD: 'US$' }
+
+export interface CurrencyFormatOptions {
+  /** `CA$` / `US$` instead of a bare `$`, for views that mix currencies. */
+  explicit?: boolean
+}
+
+export function formatCurrency(
+  value: number,
+  currency: Currency,
+  maximumFractionDigits = 0,
+  { explicit = false }: CurrencyFormatOptions = {},
+): string {
+  const formatted = new Intl.NumberFormat(LOCALE, {
     style: 'currency',
     currency,
     currencyDisplay: 'narrowSymbol',
@@ -42,6 +55,8 @@ export function formatCurrency(value: number, currency: Currency, maximumFractio
     minimumFractionDigits: maximumFractionDigits,
     maximumFractionDigits,
   }).format(value)
+  const prefix = explicit ? EXPLICIT_DOLLAR[currency] : undefined
+  return prefix ? formatted.replace('$', prefix) : formatted
 }
 
 /** `1 week`, `3 days` */

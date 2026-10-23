@@ -19,6 +19,7 @@ import type { DisplayUnit } from '@/lib/assignment'
 import { formatNumber } from '@/lib/format'
 import { getMemberHours, getMemberLoadPct, isBeforeStart } from '@/lib/forecast'
 import { getFullName } from '@/lib/roster'
+import type { DateRange } from '@/lib/schedule'
 import { cn } from '@/lib/utils'
 import type { ISODate, TeamMember } from '@/store/types'
 
@@ -34,6 +35,8 @@ interface AssignmentRowProps {
   member: TeamMember
   weeks: ISODate[]
   standardHoursPerWeek: number
+  /** Project dates; partial first and last weeks are pro-rated. */
+  projectRange: DateRange | null
   unit: DisplayUnit
   /** Selected column range in this row, or -1/-1. */
   selectedLeft: number
@@ -59,6 +62,7 @@ export const AssignmentRow = memo(function AssignmentRow({
   member,
   weeks,
   standardHoursPerWeek,
+  projectRange,
   unit,
   selectedLeft,
   selectedRight,
@@ -78,7 +82,7 @@ export const AssignmentRow = memo(function AssignmentRow({
 
   const cells = weeks.map((week, col) => {
     const pct = getMemberLoadPct(member, week)
-    const hours = getMemberHours(member, week, standardHoursPerWeek)
+    const hours = getMemberHours(member, week, standardHoursPerWeek, projectRange)
     totalHours += hours
     const isEditing = editing?.col === col
     return (

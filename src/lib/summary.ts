@@ -1,5 +1,11 @@
 import { getTeamTotals, type MemberTotals } from '@/lib/forecast'
-import { getProjectRange, getProjectWeeks, type DateRange } from '@/lib/schedule'
+import {
+  getProjectRange,
+  getProjectWeeks,
+  getWeekWorkingShare,
+  WORKING_DAYS_PER_WEEK,
+  type DateRange,
+} from '@/lib/schedule'
 import type { ForecastSnapshot, ISODate } from '@/store/types'
 
 export type MarginTone = 'success' | 'warning' | 'danger'
@@ -7,6 +13,8 @@ export type MarginTone = 'success' | 'warning' | 'danger'
 export interface ForecastSummary {
   range: DateRange | null
   weeks: ISODate[]
+  /** Mon–Fri days from project start to end; partial first and last weeks count only their own days. */
+  workingDays: number
   activeMembers: number
   inactiveMembers: number
   totals: MemberTotals
@@ -20,9 +28,14 @@ export function getForecastSummary({ project, phases, members }: ForecastSnapsho
   return {
     range,
     weeks,
+    workingDays: weeks.reduce(
+      (days, week) =>
+        days + Math.round(getWeekWorkingShare(week, range?.start, range?.end) * WORKING_DAYS_PER_WEEK),
+      0,
+    ),
     activeMembers,
     inactiveMembers: members.length - activeMembers,
-    totals: getTeamTotals(members, weeks, project.standardHoursPerWeek),
+    totals: getTeamTotals(members, weeks, project.standardHoursPerWeek, range),
   }
 }
 

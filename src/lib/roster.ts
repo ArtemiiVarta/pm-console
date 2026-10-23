@@ -1,4 +1,5 @@
 import { getMemberTotals, getRateMargin, type MemberTotals } from '@/lib/forecast'
+import type { DateRange } from '@/lib/schedule'
 import type { ISODate, TeamMember } from '@/store/types'
 
 export interface RosterRow {
@@ -45,6 +46,7 @@ export function getRosterRows(
   members: TeamMember[],
   weeks: ISODate[],
   standardHoursPerWeek: number,
+  range?: DateRange | null,
 ): RosterRow[] {
   return members.map((member) => {
     const { marginPerHour, marginPct } = getRateMargin(member.costRate, member.priceRate)
@@ -54,7 +56,7 @@ export function getRosterRows(
       weeklyHours: (member.defaultLoadPct / 100) * standardHoursPerWeek,
       marginPerHour,
       marginPct,
-      totals: getMemberTotals(member, weeks, standardHoursPerWeek),
+      totals: getMemberTotals(member, weeks, standardHoursPerWeek, range),
     }
   })
 }

@@ -45,13 +45,24 @@ describe('getForecastSummary', () => {
     expect(summary.weeks).toEqual(['2026-10-19', '2026-10-26', '2026-11-02'])
     expect(summary.activeMembers).toBe(1)
     expect(summary.inactiveMembers).toBe(1)
+    // Wed 21 Oct – Tue 3 Nov: 3 + 5 + 2 working days, so exactly two weeks of hours.
     expect(summary.totals).toMatchObject({
-      hours: 120,
-      cost: 12000,
-      revenue: 15000,
-      margin: 3000,
+      hours: 80,
+      cost: 8000,
+      revenue: 10000,
+      margin: 2000,
       marginPct: 0.2,
     })
+  })
+
+  it('pro-rates a member who starts mid-week inside a partial project week', () => {
+    const summary = getForecastSummary({
+      project: createEmptyProject(),
+      phases: [phase],
+      members: [{ ...member('a', true), startDate: '2026-10-22' }],
+    })
+    // Thu–Fri in the first week (2 days), then 5, then 2.
+    expect(summary.totals.hours).toBe(72)
   })
 })
 

@@ -111,7 +111,7 @@ function add(a: ComparisonValues, b: ComparisonValues): ComparisonValues {
 function memberValues(
   forecast: ForecastSnapshot,
 ): Map<string, { name: string; role: string; values: ComparisonValues }> {
-  const { weeks } = getForecastSummary(forecast)
+  const { weeks, range } = getForecastSummary(forecast)
   const result = new Map<string, { name: string; role: string; values: ComparisonValues }>()
   for (const member of forecast.members) {
     if (!member.active) continue
@@ -119,6 +119,7 @@ function memberValues(
       member,
       weeks,
       forecast.project.standardHoursPerWeek,
+      range,
     )
     result.set(member.id, {
       name: getFullName(member),

@@ -37,11 +37,13 @@ import { formatCurrency, formatDate, formatNumber, formatWeekLabel } from '@/lib
 import {
   getMemberHours,
   getMemberLoadPct,
+  getMemberWeekShare,
   getWeeklyTeamTotals,
   isBeforeStart,
   type WeeklyTeamTotals,
 } from '@/lib/forecast'
 import { getFullName } from '@/lib/roster'
+import { getProjectRange, getWeekWorkingShare, WORKING_DAYS_PER_WEEK } from '@/lib/schedule'
 import { cn } from '@/lib/utils'
 import { useForecastSource } from '@/features/settings/team/forecastSource'
 import type { Currency, ISODate, TeamMember } from '@/store/types'
@@ -108,7 +110,22 @@ export function AssignmentGrid({
     () => getPhaseLanes(weeks, phases, project.durationMode),
     [weeks, phases, project.durationMode],
   )
-  const weeklyTotals = useMemo(() => getWeeklyTeamTotals(members, weeks, std), [members, weeks, std])
+  const projectRange = useMemo(
+    () => getProjectRange(phases, project.durationMode),
+    [phases, project.durationMode],
+  )
+  const weeklyTotals = useMemo(
+    () => getWeeklyTeamTotals(members, weeks, std, projectRange),
+    [members, weeks, std, projectRange],
+  )
+  /** Working days of each week inside the project, for partial first and last weeks. */
+  const projectDays = useMemo(
+    () =>
+      weeks.map((week) =>
+        Math.round(getWeekWorkingShare(week, projectRange?.start, projectRange?.end) * WORKING_DAYS_PER_WEEK),
+      ),
+    [weeks, projectRange],
+  )
 
   // Keep the selection inside the grid when rows or weeks change.
   const clamp = useCallback(
@@ -156,7 +173,8 @@ export function AssignmentGrid({
       return
     }
     const pct = getMemberLoadPct(member, week)
-    const current = unit === 'pct' ? String(pct) : formatNumber(getMemberHours(member, week, std), 2)
+    const current =
+      unit === 'pct' ? String(pct) : formatNumber(getMemberHours(member, week, std, projectRange), 2)
     const state = { ...pos, draft: draft ?? current, selectAll: draft === undefined }
     editingRef.current = state
     setEditing(state)
@@ -170,7 +188,9 @@ export function AssignmentGrid({
     const member = members[current.row]
     const weekStart = weeks[current.col]
     if (!member || !weekStart) return true
-    const parsed = parseLoadInput(current.draft, unit, std)
+    // Hours in a partial week convert against the hours that week can hold.
+    const share = getMemberWeekShare(member, weekStart, projectRange)
+    const parsed = parseLoadInput(current.draft, unit, share > 0 ? std * share : std)
     if (parsed.kind === 'invalid') {
       toast.error(parsed.message)
       return false
@@ -334,8 +354,10 @@ export function AssignmentGrid({
     const week = weeks[tooltip.col]
     if (!member || !week) return null
     const pct = getMemberLoadPct(member, week)
-    const hours = getMemberHours(member, week, std)
-    return `Week of ${formatWeekLabel(week)} · ${formatNumber(pct, 1)}% · ${formatNumber(hours, 1)} h · developer capacity ${formatNumber(hours * (member.capacityPct / 100), 1)} h${pending[member.id]?.[week] !== undefined ? ' · unsaved' : ''}`
+    const hours = getMemberHours(member, week, std, projectRange)
+    const days = Math.round(getMemberWeekShare(member, week, projectRange) * WORKING_DAYS_PER_WEEK)
+    const partial = days < WORKING_DAYS_PER_WEEK ? ` · ${days} of ${WORKING_DAYS_PER_WEEK} working days` : ''
+    return `Week of ${formatWeekLabel(week)} · ${formatNumber(pct, 1)}%${partial} · ${formatNumber(hours, 1)} h · developer capacity ${formatNumber(hours * (member.capacityPct / 100), 1)} h${pending[member.id]?.[week] !== undefined ? ' · unsaved' : ''}`
   })()
 
   const headCell = 'border-b bg-surface text-xs font-medium uppercase tracking-wide text-muted'
@@ -416,19 +438,33 @@ export function AssignmentGrid({
               <th scope="col" className={cn(DEFAULT_COL, headCell, 'z-10 border-r px-3 py-2 text-right')}>
                 Allocation
               </th>
-              {weeks.map((week) => (
-                <th
-                  key={week}
-                  scope="col"
-                  className={cn(
-                    WEEK_COL,
-                    headCell,
-                    'border-l px-1 py-2 text-center normal-case tabular-nums',
-                  )}
-                >
-                  {formatWeekLabel(week)}
-                </th>
-              ))}
+              {weeks.map((week, col) => {
+                const days = projectDays[col] ?? WORKING_DAYS_PER_WEEK
+                const partial = days < WORKING_DAYS_PER_WEEK
+                return (
+                  <th
+                    key={week}
+                    scope="col"
+                    title={
+                      partial
+                        ? `Partial week: ${days} of ${WORKING_DAYS_PER_WEEK} working days are in the project; hours are pro-rated`
+                        : undefined
+                    }
+                    className={cn(
+                      WEEK_COL,
+                      headCell,
+                      'border-l px-1 py-2 text-center normal-case tabular-nums',
+                    )}
+                  >
+                    {formatWeekLabel(week)}
+                    {partial && (
+                      <span className="block text-[10px] font-normal text-muted">
+                        {days}/{WORKING_DAYS_PER_WEEK} days
+                      </span>
+                    )}
+                  </th>
+                )
+              })}
               <th scope="col" className={cn(TOTAL_COL, headCell, 'z-10 border-l px-3 py-2 text-right')}>
                 Total h
               </th>
@@ -455,6 +491,7 @@ export function AssignmentGrid({
                   member={member}
                   weeks={weeks}
                   standardHoursPerWeek={std}
+                  projectRange={projectRange}
                   unit={unit}
                   selectedLeft={inRange ? range.left : -1}
                   selectedRight={inRange ? range.right : -1}

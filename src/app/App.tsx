@@ -1,5 +1,5 @@
-import { lazy } from 'react'
-import { HashRouter, Navigate, Route, Routes } from 'react-router-dom'
+import { lazy, useState } from 'react'
+import { createHashRouter, Navigate, RouterProvider, type RouteObject } from 'react-router-dom'
 import { AppShell } from '@/app/AppShell'
 import { AppProviders } from '@/app/providers'
 import { LoginPage } from '@/features/auth/LoginPage'
@@ -32,31 +32,34 @@ const ComponentsGallery = import.meta.env.DEV
   ? lazy(() => import('@/features/dev/ComponentsGallery').then((m) => ({ default: m.ComponentsGallery })))
   : null
 
-// HashRouter is required for GitHub Pages (no server-side routing).
+const routes: RouteObject[] = [
+  { path: 'login', element: <LoginPage /> },
+  {
+    element: (
+      <RequireAuth>
+        <AppShell />
+      </RequireAuth>
+    ),
+    children: [
+      { index: true, element: <ProjectsPage /> },
+      { path: 'settings/*', element: <SettingsPage /> },
+      { path: 'planning', element: <PlanningPage /> },
+      { path: 'monitoring', element: <MonitoringPage /> },
+      { path: 'forecast-vs-actual', element: <ForecastVsActualPage /> },
+      { path: 'reports', element: <ReportsPage /> },
+      ...(ComponentsGallery ? [{ path: 'dev/components', element: <ComponentsGallery /> }] : []),
+      { path: '*', element: <Navigate to="/" replace /> },
+    ],
+  },
+]
+
+// Hash routing is required for GitHub Pages (no server-side routing). It is a data router so
+// pages can hold back navigation while they have unsaved changes (useBlocker).
 export function App() {
+  const [router] = useState(() => createHashRouter(routes))
   return (
     <AppProviders>
-      <HashRouter>
-        <Routes>
-          <Route path="login" element={<LoginPage />} />
-          <Route
-            element={
-              <RequireAuth>
-                <AppShell />
-              </RequireAuth>
-            }
-          >
-            <Route index element={<ProjectsPage />} />
-            <Route path="settings/*" element={<SettingsPage />} />
-            <Route path="planning" element={<PlanningPage />} />
-            <Route path="monitoring" element={<MonitoringPage />} />
-            <Route path="forecast-vs-actual" element={<ForecastVsActualPage />} />
-            <Route path="reports" element={<ReportsPage />} />
-            {ComponentsGallery && <Route path="dev/components" element={<ComponentsGallery />} />}
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Route>
-        </Routes>
-      </HashRouter>
+      <RouterProvider router={router} />
     </AppProviders>
   )
 }

@@ -7,6 +7,7 @@ import { ActionButton } from '@/components/ActionButton'
 import { FormField } from '@/components/FormField'
 import { IconButton } from '@/components/IconButton'
 import { SectionCard } from '@/components/SectionCard'
+import { UnsavedChangesGuard } from '@/components/UnsavedChangesGuard'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import {
@@ -52,12 +53,30 @@ export function ProjectDetailsForm() {
 
   const hours = useWatch({ control, name: 'standardHoursPerWeek' })
 
+  // Resolves false (and shows the field errors) when the form is invalid.
+  const saveBeforeLeaving = () =>
+    new Promise<boolean>((resolve) => {
+      void handleSubmit(
+        (values) => {
+          onSubmit(values)
+          resolve(true)
+        },
+        () => resolve(false),
+      )()
+    })
+
   return (
     <SectionCard
       icon={FileText}
       title="Project details"
       description="Name, client and how the schedule and forecast are calculated."
     >
+      <UnsavedChangesGuard
+        when={isDirty}
+        what="project details"
+        onSave={saveBeforeLeaving}
+        onDiscard={() => reset(toProjectDetailsValues(project))}
+      />
       <form onSubmit={handleSubmit(onSubmit)} noValidate className="flex flex-col gap-6">
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <FormField id="project-name" label="Project name" required error={errors.name?.message}>
