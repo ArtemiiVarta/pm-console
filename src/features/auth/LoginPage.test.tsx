@@ -80,7 +80,7 @@ describe('LoginPage', () => {
 
     await user.paste(CORRECT_PIN)
 
-    expect(await screen.findByRole('heading', { level: 1, name: 'Project Settings' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { level: 1, name: 'Projects' })).toBeInTheDocument()
   })
 
   it('fills from the focused box when fewer digits are pasted', async () => {

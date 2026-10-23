@@ -11,10 +11,17 @@ export type DurationMode = 'working' | 'calendar'
 
 export type DurationUnit = 'days' | 'weeks'
 
+/** RAG status of a project. */
+export type ProjectStatus = 'green' | 'amber' | 'red'
+
 export interface Project {
   id: string
   name: string
   client: string
+  /** Overall health, shown on the Projects home page. */
+  status: ProjectStatus
+  /** Optional reason for the status. */
+  statusRationale: string
   currency: Currency
   standardHoursPerWeek: number
   durationMode: DurationMode

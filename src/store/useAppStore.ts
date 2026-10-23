@@ -23,7 +23,7 @@ import type {
 } from '@/store/types'
 
 export const STORE_KEY = 'pm-console-v1'
-export const STORE_VERSION = 3
+export const STORE_VERSION = 4
 
 const MIN_LOAD_PCT = 0
 const MAX_LOAD_PCT = 200
@@ -58,7 +58,23 @@ export interface AppData {
   selectedBaselineId: string | null
 }
 
+/** Every project on this device (or synced from GitHub), keyed by project id. */
+export interface Workspace {
+  library: Record<string, AppData>
+  /** The open project; its data is also spread at the top level of the state. */
+  activeProjectId: string
+}
+
 export interface AppActions {
+  /** Adds an empty project and opens it; returns its id. */
+  createProject: () => string
+  /** Opens another project (the current one is already saved in the library). */
+  openProject: (id: string) => void
+  /** Deletes a project; if it was open, another (or a new empty one) is opened. */
+  deleteProject: (id: string) => void
+  /** Replaces every project at once (backup import, GitHub sync). */
+  replaceWorkspace: (workspace: Workspace) => void
+
   updateProject: (patch: ProjectPatch) => void
 
   addPhase: (phase: NewPhase) => string
@@ -107,7 +123,7 @@ export interface AppActions {
   /** Replaces the working project, phases and team with a copy of the baseline's snapshot. */
   restoreBaseline: (id: string) => boolean
   selectBaseline: (id: string | null) => void
-  /** Replaces all data at once (backup import). */
+  /** Replaces the open project's data at once. */
   replaceData: (data: AppData) => void
 }
 
@@ -120,7 +136,41 @@ export interface WeeklyOverrideUpdate extends WeeklyCell {
   pct: number
 }
 
-export type AppState = AppData & AppActions
+export type AppState = AppData & Workspace & AppActions
+
+const DATA_KEYS = [
+  'project',
+  'phases',
+  'items',
+  'milestones',
+  'members',
+  'baselines',
+  'selectedBaselineId',
+] as const
+
+/** The open project's data from the full state. */
+export function pickData(state: AppData): AppData {
+  const { project, phases, items, milestones, members, baselines, selectedBaselineId } = state
+  return { project, phases, items, milestones, members, baselines, selectedBaselineId }
+}
+
+function sameData(a: AppData, b: AppData): boolean {
+  return DATA_KEYS.every((key) => a[key] === b[key])
+}
+
+/** A workspace with one empty project. */
+export function createInitialWorkspace(): Workspace & AppData {
+  const data = createInitialData()
+  return { ...data, library: { [data.project.id]: data }, activeProjectId: data.project.id }
+}
+
+/** Opens `id` from a library, falling back to the first project (or a new one). */
+function openFrom(library: Record<string, AppData>, id: string | undefined): Workspace & AppData {
+  const activeId = id && library[id] ? id : Object.keys(library)[0]
+  if (!activeId) return createInitialWorkspace()
+  const data = library[activeId] as AppData
+  return { ...data, library, activeProjectId: activeId }
+}
 
 const newId = () => crypto.randomUUID()
 const nowISO = () => new Date().toISOString()
@@ -132,6 +182,8 @@ export function createEmptyProject(): Project {
     id: newId(),
     name: '',
     client: '',
+    status: 'green',
+    statusRationale: '',
     currency: 'CAD',
     standardHoursPerWeek: 40,
     durationMode: 'working',
@@ -142,10 +194,32 @@ export function createEmptyProject(): Project {
 
 /** Brings data saved under an older STORE_VERSION up to date. */
 export function migrateData(persisted: unknown, version: number): AppData {
-  const data = persisted as Partial<AppData>
-  // v2 added project milestones, v3 added tasks/sub-items.
-  if (version < 3) return { ...(data as AppData), milestones: data.milestones ?? [], items: data.items ?? [] }
-  return data as AppData
+  let data = persisted as AppData
+  // v2 added project milestones, v3 added tasks/sub-items, v4 added project status.
+  if (version < 3) {
+    const partial = persisted as Partial<AppData>
+    data = { ...data, milestones: partial.milestones ?? [], items: partial.items ?? [] }
+  }
+  if (version < 4) {
+    data = {
+      ...data,
+      project: {
+        ...data.project,
+        status: data.project.status ?? 'green',
+        statusRationale: data.project.statusRationale ?? '',
+      },
+    }
+  }
+  return data
+}
+
+/** Upgrades what was saved in localStorage: up to v3 one project, from v4 a library of projects. */
+export function migrateStore(persisted: unknown, version: number): Workspace {
+  if (version < 4) {
+    const data = migrateData(persisted, version)
+    return { library: { [data.project.id]: data }, activeProjectId: data.project.id }
+  }
+  return persisted as Workspace
 }
 
 export function createInitialData(): AppData {
@@ -189,7 +263,27 @@ function mapMember(members: TeamMember[], id: string, update: (member: TeamMembe
 export const useAppStore = create<AppState>()(
   persist(
     (set, get) => ({
-      ...createInitialData(),
+      ...createInitialWorkspace(),
+
+      createProject: () => {
+        const data = createInitialData()
+        set((state) => ({
+          ...data,
+          library: { ...state.library, [data.project.id]: data },
+          activeProjectId: data.project.id,
+        }))
+        return data.project.id
+      },
+      openProject: (id) => set((state) => (state.library[id] ? openFrom(state.library, id) : {})),
+      deleteProject: (id) =>
+        set((state) => {
+          const library = { ...state.library }
+          delete library[id]
+          if (id !== state.activeProjectId) return { library }
+          if (Object.keys(library).length === 0) return createInitialWorkspace()
+          return openFrom(library, undefined)
+        }),
+      replaceWorkspace: ({ library, activeProjectId }) => set(openFrom(library, activeProjectId)),
 
       updateProject: (patch) =>
         set((state) => {
@@ -446,25 +540,22 @@ export const useAppStore = create<AppState>()(
       name: STORE_KEY,
       version: STORE_VERSION,
       storage: createJSONStorage(() => localStorage),
-      partialize: ({
-        project,
-        phases,
-        items,
-        milestones,
-        members,
-        baselines,
-        selectedBaselineId,
-      }): AppData => ({
-        project,
-        phases,
-        items,
-        milestones,
-        members,
-        baselines,
-        selectedBaselineId,
-      }),
-      // Upgrades data saved by older versions. v2 added milestones.
-      migrate: (persisted, version) => migrateData(persisted, version),
+      // Saved: every project, plus which one is open. The open project is rebuilt from the library on load.
+      partialize: ({ library, activeProjectId }): Workspace => ({ library, activeProjectId }),
+      migrate: (persisted, version) => migrateStore(persisted, version),
+      merge: (persisted, current) => {
+        const saved = persisted as Partial<Workspace> | undefined
+        if (!saved?.library || Object.keys(saved.library).length === 0) return current
+        return { ...current, ...openFrom(saved.library, saved.activeProjectId) }
+      },
     },
   ),
 )
+
+// Keep the open project's slot in the library up to date after every change.
+useAppStore.subscribe((state) => {
+  const current = pickData(state)
+  const stored = state.library[state.activeProjectId]
+  if (stored && sameData(stored, current)) return
+  useAppStore.setState({ library: { ...state.library, [state.activeProjectId]: current } })
+})

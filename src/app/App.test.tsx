@@ -8,19 +8,26 @@ describe('App', () => {
     useAuth.getState().signIn()
   })
 
-  it('opens Project Settings by default', async () => {
+  it('opens the Projects page by default', async () => {
     render(<App />)
-    expect(await screen.findByRole('heading', { level: 1, name: 'Project Settings' })).toBeInTheDocument()
-    expect(window.location.hash).toBe('#/settings/general')
+    expect(await screen.findByRole('heading', { level: 1, name: 'Projects' })).toBeInTheDocument()
+    expect(window.location.hash).toBe('')
   })
 
   it('shows every main tab and the untitled project name', () => {
     render(<App />)
     const nav = screen.getByRole('navigation', { name: 'Main' })
-    for (const label of ['Project Settings', 'Planning', 'Monitoring', 'Forecast vs Actual', 'Reports']) {
+    for (const label of [
+      'Projects',
+      'Project Settings',
+      'Planning',
+      'Monitoring',
+      'Forecast vs Actual',
+      'Reports',
+    ]) {
       expect(nav).toHaveTextContent(label)
     }
-    expect(screen.getByText('Untitled project')).toBeInTheDocument()
+    expect(screen.getByTitle('Current project')).toHaveTextContent('Untitled project')
   })
 
   it('shows a coming-soon page for unbuilt tabs', async () => {

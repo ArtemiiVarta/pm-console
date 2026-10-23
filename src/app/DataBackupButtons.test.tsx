@@ -54,7 +54,7 @@ describe('Export / Import', () => {
 
     await user.upload(screen.getByTestId('backup-file-input'), file)
     const confirm = within(await screen.findByRole('dialog', { name: 'Replace all data with this backup?' }))
-    expect(confirm.getByText(/project “From backup”, 1 phases/)).toBeInTheDocument()
+    expect(confirm.getByText(/1 project \(From backup\)/)).toBeInTheDocument()
     expect(useAppStore.getState().project.name).toBe('Current')
 
     await user.click(confirm.getByRole('button', { name: 'Replace all data' }))

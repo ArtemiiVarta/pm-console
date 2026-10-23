@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { BACKUP_FORMAT, type Backup } from '@/lib/backupFile'
+import type { AppData } from '@/store/useAppStore'
 
 const isoDate = z.iso.date()
 
@@ -7,6 +8,9 @@ const projectSchema = z.object({
   id: z.string(),
   name: z.string(),
   client: z.string(),
+  // Optional in backups made before project statuses existed.
+  status: z.enum(['green', 'amber', 'red']).default('green'),
+  statusRationale: z.string().default(''),
   currency: z.enum(['CAD', 'USD', 'EUR', 'GBP']),
   standardHoursPerWeek: z.number().min(1).max(80),
   durationMode: z.enum(['working', 'calendar']),
@@ -99,7 +103,21 @@ const appDataSchema = z.object({
   selectedBaselineId: z.string().nullable(),
 })
 
+const workspaceSchema = z.object({
+  library: z.record(z.string(), appDataSchema),
+  activeProjectId: z.string(),
+})
+
+/** Version 4+: every project. */
 const backupSchema = z.object({
+  format: z.literal(BACKUP_FORMAT),
+  version: z.number().int().positive(),
+  exportedAt: z.string(),
+  workspace: workspaceSchema,
+})
+
+/** Versions 1–3: a single project under `data`. */
+const legacyBackupSchema = z.object({
   format: z.literal(BACKUP_FORMAT),
   version: z.number().int().positive(),
   exportedAt: z.string(),
@@ -108,7 +126,10 @@ const backupSchema = z.object({
 
 export type ParsedBackup = { ok: true; backup: Backup } | { ok: false; error: string }
 
-/** Reads a backup file's text (zod lives here, so this module is loaded only when importing). Rejects anything that is not a complete, valid backup. */
+/**
+ * Reads a backup file's text (zod lives here, so this module is loaded only when needed).
+ * Accepts single-project backups from older versions as a one-project workspace.
+ */
 export function parseBackup(text: string, currentVersion: number): ParsedBackup {
   let json: unknown
   try {
@@ -120,7 +141,8 @@ export function parseBackup(text: string, currentVersion: number): ParsedBackup 
   if (marker !== BACKUP_FORMAT) {
     return { ok: false, error: 'This is not a PM Console backup file.' }
   }
-  const result = backupSchema.safeParse(json)
+  const legacy = 'data' in (json as object)
+  const result = legacy ? legacyBackupSchema.safeParse(json) : backupSchema.safeParse(json)
   if (!result.success) {
     const issue = result.error.issues[0]
     const where = issue?.path.join('.') || 'file'
@@ -133,6 +155,18 @@ export function parseBackup(text: string, currentVersion: number): ParsedBackup 
     return {
       ok: false,
       error: 'This backup was made by a newer version of PM Console. Reload the app and try again.',
+    }
+  }
+  if ('data' in result.data) {
+    const data = result.data.data as AppData
+    return {
+      ok: true,
+      backup: {
+        format: BACKUP_FORMAT,
+        version: result.data.version,
+        exportedAt: result.data.exportedAt,
+        workspace: { library: { [data.project.id]: data }, activeProjectId: data.project.id },
+      },
     }
   }
   return { ok: true, backup: result.data as Backup }

@@ -16,6 +16,8 @@ import {
 } from '@/features/settings/general/projectSchema'
 import { fieldAria } from '@/lib/fieldAria'
 import { CURRENCIES } from '@/lib/format'
+import { PROJECT_STATUSES, STATUS_CLASSES } from '@/lib/projectStatus'
+import { cn } from '@/lib/utils'
 import { useAppStore } from '@/store/useAppStore'
 
 const DURATION_MODE_HELP =
@@ -160,6 +162,59 @@ export function ProjectDetailsForm() {
                   </SelectContent>
                 </Select>
               )}
+            />
+          </FormField>
+
+          <FormField
+            id="project-status"
+            label="Project status"
+            helper="Shown as the tile color on the Projects page."
+          >
+            <Controller
+              control={control}
+              name="status"
+              render={({ field }) => (
+                <Select value={field.value} onValueChange={field.onChange}>
+                  <SelectTrigger
+                    id="project-status"
+                    ref={field.ref}
+                    onBlur={field.onBlur}
+                    {...fieldAria('project-status', undefined, true)}
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PROJECT_STATUSES.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        <span className="flex items-center gap-2">
+                          <span
+                            aria-hidden
+                            className={cn('h-2.5 w-2.5 rounded-full', STATUS_CLASSES[option.value].dot)}
+                          />
+                          {option.label}
+                          <span className="text-xs text-muted">· {option.hint}</span>
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            />
+          </FormField>
+
+          <FormField
+            id="project-rationale"
+            label="Rationale"
+            helper="Optional. Why the project has this status."
+            error={errors.statusRationale?.message}
+          >
+            <textarea
+              id="project-rationale"
+              rows={3}
+              placeholder="e.g. Data migration is two weeks late; recovery plan agreed with the client."
+              className="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              {...fieldAria('project-rationale', errors.statusRationale?.message, true)}
+              {...register('statusRationale')}
             />
           </FormField>
         </div>

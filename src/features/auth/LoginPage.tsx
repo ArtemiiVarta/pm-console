@@ -17,7 +17,7 @@ import { cn } from '@/lib/utils'
 
 // Lockout survives a page reload within the tab.
 const LOCKOUT_KEY = 'pm-console-lockout'
-const DEFAULT_ROUTE = '/settings'
+const DEFAULT_ROUTE = '/'
 
 // Wall clock for lockout timing, read in event handlers and timers only.
 const clock = () => Date.now()

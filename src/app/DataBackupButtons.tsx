@@ -4,13 +4,13 @@ import { toast } from 'sonner'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { IconButton } from '@/components/IconButton'
 import { usePendingAllocation } from '@/features/settings/team/assignment/usePendingAllocation'
-import { createBackup, getBackupFileName, type Backup } from '@/lib/backupFile'
+import { countProjects, createBackup, getBackupFileName, type Backup } from '@/lib/backupFile'
 import { formatTimestamp } from '@/lib/format'
 import { STORE_VERSION, useAppStore } from '@/store/useAppStore'
 
 /** Data lives only in this browser, so the top bar offers a JSON backup and restore. */
 export function DataBackupButtons() {
-  const replaceData = useAppStore((state) => state.replaceData)
+  const replaceWorkspace = useAppStore((state) => state.replaceWorkspace)
   const fileInput = useRef<HTMLInputElement>(null)
   const [pending, setPending] = useState<{ backup: Backup; fileName: string } | null>(null)
 
@@ -42,7 +42,11 @@ export function DataBackupButtons() {
   }
 
   const summary = pending
-    ? `“${pending.fileName}” from ${formatTimestamp(pending.backup.exportedAt)}: project “${pending.backup.data.project.name || 'Untitled project'}”, ${pending.backup.data.phases.length} phases, ${pending.backup.data.members.length} team members, ${pending.backup.data.baselines.length} baselines.`
+    ? `“${pending.fileName}” from ${formatTimestamp(pending.backup.exportedAt)}: ${countProjects(pending.backup)} project${countProjects(pending.backup) === 1 ? '' : 's'} (${Object.values(
+        pending.backup.workspace.library,
+      )
+        .map((data) => data.project.name || 'Untitled project')
+        .join(', ')}).`
     : ''
 
   return (
@@ -50,7 +54,7 @@ export function DataBackupButtons() {
       <IconButton
         icon={Download}
         label="Export data"
-        tooltip="Download all data as a backup file"
+        tooltip="Download all projects as a backup file"
         onClick={exportData}
       />
       <IconButton
@@ -73,12 +77,12 @@ export function DataBackupButtons() {
         open={pending !== null}
         onOpenChange={(open) => !open && setPending(null)}
         title="Replace all data with this backup?"
-        description={`${summary} Everything currently in this browser — project, phases, team, planned allocation and baselines — will be overwritten. Export first if you want to keep it.`}
+        description={`${summary} Every project currently in this browser — settings, schedule, team, planned allocation and baselines — will be overwritten. Export first if you want to keep it.`}
         confirmLabel="Replace all data"
         confirmIcon={Upload}
         onConfirm={() => {
           if (!pending) return
-          replaceData(pending.backup.data)
+          replaceWorkspace(pending.backup.workspace)
           // Unsaved grid edits belonged to the data that was just replaced.
           usePendingAllocation.getState().discard()
           toast.success('Backup restored')

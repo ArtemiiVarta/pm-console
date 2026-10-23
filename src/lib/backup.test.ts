@@ -1,11 +1,19 @@
 import { parseBackup } from '@/lib/backup'
-import { createBackup, getBackupFileName } from '@/lib/backupFile'
-import { createInitialData, useAppStore, type AppData } from '@/store/useAppStore'
+import { countProjects, createBackup, getBackupFileName } from '@/lib/backupFile'
+import {
+  createInitialWorkspace,
+  pickData,
+  STORE_VERSION,
+  useAppStore,
+  type AppData,
+  type Workspace,
+} from '@/store/useAppStore'
 
-function sampleData(): AppData {
-  useAppStore.setState(createInitialData())
+/** Two projects: "Rollout" (with a phase, member, override and baseline) and an empty second one. */
+function sampleWorkspace(): Workspace {
+  useAppStore.setState(createInitialWorkspace())
   const store = useAppStore.getState()
-  store.updateProject({ name: 'Rollout', currency: 'EUR' })
+  store.updateProject({ name: 'Rollout', currency: 'EUR', status: 'amber', statusRationale: 'Late data' })
   store.addPhase({ name: 'Build', startDate: '2026-10-19', duration: 2, durationUnit: 'weeks' })
   const id = store.addMember({
     firstName: 'Ada',
@@ -18,32 +26,88 @@ function sampleData(): AppData {
   store.setWeeklyOverride(id, '2026-10-26', 60)
   const baseline = store.createBaseline('B1', 'Kick-off')
   store.selectBaseline(baseline.id)
-  return useAppStore.getState()
+  store.createProject()
+  store.updateProject({ name: 'Second' })
+  const { library, activeProjectId } = useAppStore.getState()
+  return { library, activeProjectId }
 }
 
 describe('backup', () => {
-  it('round-trips all data through JSON', () => {
-    const data = sampleData()
-    const backup = createBackup(data, 1, new Date('2026-10-21T12:00:00Z'))
-    const parsed = parseBackup(JSON.stringify(backup), 1)
+  it('round-trips every project through JSON', () => {
+    const workspace = sampleWorkspace()
+    const backup = createBackup(workspace, STORE_VERSION, new Date('2026-10-21T12:00:00Z'))
+    const parsed = parseBackup(JSON.stringify(backup), STORE_VERSION)
     expect(parsed.ok).toBe(true)
     if (!parsed.ok) return
-    const { project, phases, items, milestones, members, baselines, selectedBaselineId } = data
-    expect(parsed.backup.data).toEqual({
-      project,
-      phases,
-      items,
-      milestones,
-      members,
-      baselines,
-      selectedBaselineId,
-    })
+    expect(parsed.backup.workspace).toEqual(workspace)
+    expect(countProjects(parsed.backup)).toBe(2)
     expect(parsed.backup.exportedAt).toBe('2026-10-21T12:00:00.000Z')
+    const rollout = Object.values(parsed.backup.workspace.library).find((d) => d.project.name === 'Rollout')
+    expect(rollout?.project).toMatchObject({ status: 'amber', statusRationale: 'Late data' })
   })
 
   it('exports data only, never store actions', () => {
-    const backup = createBackup(sampleData(), 1, new Date())
-    expect(Object.keys(backup.data).sort()).toEqual([
+    const backup = createBackup(useAppStore.getState(), STORE_VERSION, new Date())
+    expect(Object.keys(backup.workspace).sort()).toEqual(['activeProjectId', 'library'])
+  })
+
+  it('imports a single-project backup from version 3 or earlier as one project', () => {
+    sampleWorkspace()
+    const store = useAppStore.getState()
+    const old = store.library[Object.keys(store.library)[0] ?? ''] as AppData
+    const { project, ...rest } = old
+    // Older backups: `data` instead of `workspace`, no status, no milestones/tasks.
+    const { status: _s, statusRationale: _r, ...oldProject } = project
+    const { items: _i, milestones: _m, ...oldData } = rest
+    const legacy = {
+      format: 'pm-console-backup',
+      version: 1,
+      exportedAt: 'x',
+      data: { project: oldProject, ...oldData },
+    }
+    const parsed = parseBackup(JSON.stringify(legacy), STORE_VERSION)
+    expect(parsed.ok).toBe(true)
+    if (!parsed.ok) return
+    const data = parsed.backup.workspace.library[project.id]
+    expect(parsed.backup.workspace.activeProjectId).toBe(project.id)
+    expect(data?.project).toMatchObject({ name: 'Rollout', status: 'green', statusRationale: '' })
+    expect(data?.milestones).toEqual([])
+    expect(data?.items).toEqual([])
+  })
+
+  it('names the file by date', () => {
+    expect(getBackupFileName(new Date(2026, 9, 21))).toBe('pm-console-backup-2026-10-21.json')
+  })
+
+  it('rejects invalid JSON, other files, damaged data and newer versions', () => {
+    expect(parseBackup('{oops', STORE_VERSION)).toEqual({ ok: false, error: 'This file is not valid JSON.' })
+    expect(parseBackup('{"hello":1}', STORE_VERSION)).toEqual({
+      ok: false,
+      error: 'This is not a PM Console backup file.',
+    })
+
+    const workspace = sampleWorkspace()
+    const backup = createBackup(workspace, STORE_VERSION, new Date())
+    const damaged = structuredClone(backup)
+    const first = Object.values(damaged.workspace.library)[0]?.members[0]
+    if (first) first.defaultLoadPct = 500
+    const result = parseBackup(JSON.stringify(damaged), STORE_VERSION)
+    expect(result.ok).toBe(false)
+    if (!result.ok)
+      expect(result.error).toMatch(
+        /damaged or incomplete \(workspace\.library\..+\.members\.0\.defaultLoadPct/,
+      )
+
+    expect(
+      parseBackup(JSON.stringify({ ...backup, version: STORE_VERSION + 1 }), STORE_VERSION),
+    ).toMatchObject({
+      ok: false,
+      error: expect.stringMatching(/newer version/),
+    })
+  })
+
+  it('pickData returns only project data', () => {
+    expect(Object.keys(pickData(useAppStore.getState())).sort()).toEqual([
       'baselines',
       'items',
       'members',
@@ -52,38 +116,5 @@ describe('backup', () => {
       'project',
       'selectedBaselineId',
     ])
-  })
-
-  it('accepts version 1 backups, which have no milestones', () => {
-    const backup = createBackup(sampleData(), 1, new Date()) as unknown as { data: Record<string, unknown> }
-    delete backup.data.milestones
-    const parsed = parseBackup(JSON.stringify(backup), 2)
-    expect(parsed.ok).toBe(true)
-    if (parsed.ok) expect(parsed.backup.data.milestones).toEqual([])
-  })
-
-  it('names the file by date', () => {
-    expect(getBackupFileName(new Date(2026, 9, 21))).toBe('pm-console-backup-2026-10-21.json')
-  })
-
-  it('rejects invalid JSON, other files, damaged data and newer versions', () => {
-    expect(parseBackup('{oops', 1)).toEqual({ ok: false, error: 'This file is not valid JSON.' })
-    expect(parseBackup('{"hello":1}', 1)).toEqual({
-      ok: false,
-      error: 'This is not a PM Console backup file.',
-    })
-
-    const backup = createBackup(sampleData(), 1, new Date())
-    const damaged = structuredClone(backup) as unknown as { data: { members: { defaultLoadPct: number }[] } }
-    const first = damaged.data.members[0]
-    if (first) first.defaultLoadPct = 500
-    const result = parseBackup(JSON.stringify(damaged), 1)
-    expect(result.ok).toBe(false)
-    if (!result.ok) expect(result.error).toMatch(/damaged or incomplete \(data\.members\.0\.defaultLoadPct/)
-
-    expect(parseBackup(JSON.stringify({ ...backup, version: 2 }), 1)).toMatchObject({
-      ok: false,
-      error: expect.stringMatching(/newer version/),
-    })
   })
 })

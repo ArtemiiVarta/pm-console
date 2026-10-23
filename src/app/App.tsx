@@ -6,6 +6,9 @@ import { LoginPage } from '@/features/auth/LoginPage'
 import { RequireAuth } from '@/features/auth/RequireAuth'
 
 // Pages load on first visit, so the login screen and app shell ship in a small first bundle.
+const ProjectsPage = lazy(() =>
+  import('@/features/projects/ProjectsPage').then((m) => ({ default: m.ProjectsPage })),
+)
 const SettingsPage = lazy(() =>
   import('@/features/settings/SettingsPage').then((m) => ({ default: m.SettingsPage })),
 )
@@ -43,14 +46,14 @@ export function App() {
               </RequireAuth>
             }
           >
-            <Route index element={<Navigate to="/settings" replace />} />
+            <Route index element={<ProjectsPage />} />
             <Route path="settings/*" element={<SettingsPage />} />
             <Route path="planning" element={<PlanningPage />} />
             <Route path="monitoring" element={<MonitoringPage />} />
             <Route path="forecast-vs-actual" element={<ForecastVsActualPage />} />
             <Route path="reports" element={<ReportsPage />} />
             {ComponentsGallery && <Route path="dev/components" element={<ComponentsGallery />} />}
-            <Route path="*" element={<Navigate to="/settings" replace />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
         </Routes>
       </HashRouter>

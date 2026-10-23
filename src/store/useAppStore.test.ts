@@ -1,7 +1,9 @@
 import { PHASE_PALETTE } from '@/lib/palette'
 import {
   createInitialData,
+  createInitialWorkspace,
   migrateData,
+  migrateStore,
   STORE_KEY,
   STORE_VERSION,
   useAppStore,
@@ -29,7 +31,7 @@ const memberInput: NewTeamMember = {
 
 beforeEach(() => {
   localStorage.clear()
-  useAppStore.setState(createInitialData())
+  useAppStore.setState(createInitialWorkspace())
 })
 
 describe('initial state', () => {
@@ -347,7 +349,51 @@ describe('milestones', () => {
       ...createInitialData(),
       milestones: [{ id: 'm', name: 'x', date: '2026-01-01', color: '#000000' }],
     }
-    expect(migrateData(current, 3)).toBe(current)
+    expect(migrateData(current, 4)).toBe(current)
+  })
+})
+
+describe('multiple projects', () => {
+  it('creates and opens projects, keeping each one in the library', () => {
+    store().updateProject({ name: 'First' })
+    const firstId = store().activeProjectId
+    const secondId = store().createProject()
+    expect(store().activeProjectId).toBe(secondId)
+    expect(store().project.name).toBe('')
+    store().updateProject({ name: 'Second' })
+    store().addPhase({ name: 'Build', startDate: '2026-10-19', duration: 1, durationUnit: 'weeks' })
+
+    store().openProject(firstId)
+    expect(store().project.name).toBe('First')
+    expect(store().phases).toEqual([])
+    expect(store().library[secondId]?.phases.map((p) => p.name)).toEqual(['Build'])
+
+    store().openProject(secondId)
+    expect(store().phases.map((p) => p.name)).toEqual(['Build'])
+  })
+
+  it('deletes projects, opening another when the open one goes', () => {
+    const firstId = store().activeProjectId
+    const secondId = store().createProject()
+    store().deleteProject(firstId)
+    expect(Object.keys(store().library)).toEqual([secondId])
+    store().deleteProject(secondId)
+    // Never empty: a fresh project takes its place.
+    expect(Object.keys(store().library)).toHaveLength(1)
+    expect(store().activeProjectId).not.toBe(secondId)
+  })
+
+  it('new projects start green with no rationale', () => {
+    store().createProject()
+    expect(store().project).toMatchObject({ status: 'green', statusRationale: '' })
+  })
+
+  it('migrates a single-project save (v3) into a library', () => {
+    const { status: _s, statusRationale: _r, ...oldProject } = createInitialData().project
+    const v3 = { ...createInitialData(), project: oldProject }
+    const migrated = migrateStore(v3, 3)
+    expect(migrated.activeProjectId).toBe(oldProject.id)
+    expect(migrated.library[oldProject.id]?.project).toMatchObject({ status: 'green', statusRationale: '' })
   })
 })
 
@@ -359,15 +405,9 @@ describe('persistence', () => {
       state: Record<string, unknown>
     }
     expect(saved.version).toBe(STORE_VERSION)
-    expect(Object.keys(saved.state).sort()).toEqual([
-      'baselines',
-      'items',
-      'members',
-      'milestones',
-      'phases',
-      'project',
-      'selectedBaselineId',
-    ])
-    expect((saved.state.project as { name: string }).name).toBe('Persisted')
+    // Every project is saved in the library, keyed by id, plus which one is open.
+    expect(Object.keys(saved.state).sort()).toEqual(['activeProjectId', 'library'])
+    const library = saved.state.library as Record<string, { project: { name: string } }>
+    expect(library[saved.state.activeProjectId as string]?.project.name).toBe('Persisted')
   })
 })
