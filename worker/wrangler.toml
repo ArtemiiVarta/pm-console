@@ -8,7 +8,7 @@ compatibility_date = "2026-10-01"
 workers_dev = true
 
 [vars]
-GOOGLE_CLIENT_ID = ""
+GOOGLE_CLIENT_ID = "926435364098-nhkk2kor1p2autfd6rm56pdn2o6riq29.apps.googleusercontent.com"
 OWNER_EMAIL = "vvarta@gmail.com"
 DATA_OWNER = "ArtemiiVarta"
 DATA_REPO = "pm-console-data"
